@@ -22,6 +22,23 @@ vendor.qti.camera.provider-service_64 (camx)
 
 On OxygenOS the framework (`frameworks/av`, `frameworks/base`) is modified in several places the OnePlus camera relies on. On LineageOS it's stock AOSP, so the module makes up the difference in the app, the SDK, the layer and a few ROM libraries, never in LineageOS's framework.
 
+## Isolation: other camera apps use LineageOS's own path
+
+LineageOS already sets `ro.hardware.camera=oemlayer.v2`, so once the layer exists the camera provider loads it for every app. OnePlus's layer depends on OxygenOS's camera service in ways LineageOS can't match: on OxygenOS every session carries the client's package name. Third-party apps ran into its first-party code: Instagram's photo request had its JPEG taken over by the layer's snapshot path, which never produced it, so the shutter hung, and the next app (Aperture) then opened a stuck device.
+
+Since v0.32 the wrapper hands the camera provider a small **proxy** for every device it opens:
+
+- The device starts on the OnePlus layer, so the OnePlus camera's behaviour is unchanged.
+- When a session is configured in a standard operation mode (every app except the OnePlus camera, which uses its private modes ≥ 0x8000), the proxy closes that device and reopens the camera **directly on Qualcomm's HAL** (`camera.qcom`). That is the path LineageOS uses when the module isn't installed. Requests, results and buffers then never pass through OnePlus code.
+- The OnePlus layer registers callbacks inside Qualcomm's HAL at load time (`pSetOplusCallback(&g_camx_oplus_callback_ops)`). While only directly opened devices exist, the wrapper clears them, as on LineageOS without the module, and restores them when a OnePlus-layer device opens.
+- Kill switch: `setprop persist.vendor.camera.oplus_los.route 0` keeps every session on the OnePlus layer (the pre-v0.32 behaviour), effective from the next camera open.
+
+What third-party apps still see from the module: the camera **characteristics** the provider read at boot come from the layer (one table for all apps), and the capture-result queue size (`system.prop`).
+
+## Properties stay inside the camera's process
+
+The OnePlus camera expects about a dozen OxygenOS properties (ROM API level, deferred capture, HDR flags …). Instead of setting them system-wide, where any app could see a "ColorOS" device, every property read in the stubs jar and the app's two reflective reads go through `com.oplus.camera.los.LosProps` (`tools/gen_losprops.py`). It answers those keys with the module's values and passes every other key through. The only system-wide property left is the result-queue size.
+
 ## Why files live where they do
 
 - **Nothing under `/vendor`.** With meta-overlayfs, any module file under `system/vendor` turns all of `/vendor` into an overlay. On this device that made `/vendor/lib64/hw` show the module's label (`vendor_file`) instead of `vendor_hal_file`. Zygote preloads the GPU driver at boot and was denied reading that folder, which broke OpenGL ES 3 in **every** app (Chromium browsers: "GPU process isn't usable"), even apps that had modules unmounted.

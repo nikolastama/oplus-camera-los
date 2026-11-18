@@ -4,10 +4,10 @@
 # never written to persistent storage, so it disappears on the next boot after removal.
 MODDIR=${0%/*}
 until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
-# Bigger log buffers so a camera failure isn't pushed out by the camera's own chatter before the
-# debug bundle is saved. Runtime-only logd setting: back to the default on the next boot without
-# the module.
-logcat -G 16M >/dev/null 2>&1
+# Debug mode (opt-in, off by default so the module changes nothing outside the camera): create
+# $MODDIR/debug to get 16 MB log buffers, so a camera failure isn't pushed out of the log before
+# the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
+[ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
 CUR=$(getprop persist.vendor.camera.privapp.list)
 case ",$CUR," in
   *,com.oplus.camera,*) ;;

@@ -13,7 +13,15 @@
  * its HMI with only common.methods->open replaced, and after a device opens redirects that
  * device's configure_streams. For sessions in OnePlus's custom operation modes (>= 0x8000, used
  * only by the OnePlus camera) it adds com.oplus.packageName = "com.oplus.camera" to the session
- * parameters if absent, then calls the original. Everything else is passed through untouched.
+ * parameters if absent, then calls the original.
+ *
+ * Isolation (v0.32): every camera device the provider opens is a small proxy. A device starts on
+ * the OnePlus layer, as before. When a session is configured in a standard operation mode (any
+ * app other than the OnePlus camera), the proxy closes that device and reopens the camera
+ * directly on Qualcomm's HAL (camera.qcom), the path LineageOS uses without this module, and
+ * clears the OnePlus callbacks the layer registered in the HAL while no OnePlus session is open.
+ * Third-party apps therefore never run through OnePlus's request pipeline. Disable with
+ * setprop persist.vendor.camera.oplus_los.route 0 (all sessions then stay on the OnePlus layer).
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -24,6 +32,9 @@ void *dlsym(void *, const char *);
 void *memcpy(void *, const void *, size_t);
 int strcmp(const char *, const char *);
 int __android_log_print(int, const char *, const char *, ...);
+void *calloc(size_t, size_t);
+void free(void *);
+int __system_property_get(const char *, char *);
 #define RTLD_NOW 2
 #define RTLD_NOLOAD 4
 #define LOG_I 4
@@ -117,7 +128,6 @@ static const camera_module_t *g_real;
 static void (*g_get_vendor_tag_ops)(vendor_tag_ops_t *);
 static hw_module_methods_t g_methods;
 static int (*g_real_open)(const struct hw_module_t *, const char *, struct hw_device_t **);
-static int (*g_real_configure)(const struct camera3_device *, camera3_stream_configuration_t *);
 static uint32_t g_pkg_tag;
 static int g_pkg_tag_state; /* 0 unknown, 1 found, -1 not available */
 static camera_metadata_t *g_last; /* kept alive until the next configure */
@@ -208,11 +218,12 @@ static void tag_meta_streams(camera3_stream_configuration_t *cfg) {
 }
 
 static int configure_and_cap(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
+    int (*real)(const struct camera3_device *, camera3_stream_configuration_t *) = dev->ops->configure_streams;
     uint64_t enc = 0;  /* streams the framework marked as video-encoder consumers (before the HAL
                           ORs its own producer usage into the field) */
     for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++)
         if (cfg->streams[i] && (STREAM_USAGE(cfg->streams[i]) & USAGE_VIDEO_ENCODER)) enc |= 1ULL << i;
-    int r = g_real_configure(dev, cfg);
+    int r = real(dev, cfg);
     if (r == 0 && enc) {
         for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++) {
             void *st = cfg->streams[i];
@@ -226,7 +237,7 @@ static int configure_and_cap(const struct camera3_device *dev, camera3_stream_co
     return r;
 }
 
-static int wrap_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
+static int oem_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
     if (cfg && cfg->operation_mode >= 0x8000 && cfg->streams && cfg->num_streams > 0 &&
         cfg->num_streams <= 64) {
         tag_meta_streams(cfg);
@@ -255,29 +266,175 @@ static int wrap_configure(const struct camera3_device *dev, camera3_stream_confi
         }
         return configure_and_cap(dev, cfg);
     }
-    return g_real_configure(dev, cfg);
+    return dev->ops->configure_streams(dev, cfg);
 }
 
-/* Device ops: OCamera3Dev allocates a private 18-slot ops table per device (operator new, freed
- * on close), so the configure_streams slot is redirected in place; nothing to undo on close. */
-static int wrap_open(const struct hw_module_t *mod, const char *id, struct hw_device_t **out) {
-    (void)mod;
-    int r = g_real_open(&g_real->common, id, out);
-    if (r == 0 && out && *out) {
-        camera3_device_t *d = (camera3_device_t *)*out;
-        camera3_device_ops_t *o = d->ops;
-        if (o && o->configure_streams != wrap_configure) {
-            if (!g_real_configure) g_real_configure = o->configure_streams;
-            if (o->configure_streams == g_real_configure) {
-                o->configure_streams = wrap_configure;
-                __android_log_print(LOG_I, TAG, "camera %s: session hook installed", id ? id : "?");
-            } else {
-                __android_log_print(LOG_E, TAG, "camera %s: unexpected configure_streams %p, not hooked",
-                                    id ? id : "?", (void *)o->configure_streams);
-            }
-        }
+/* ---------------------------------------------------------------- per-session routing proxy */
+
+#define OPS_SLOTS 18   /* camera3_device_ops: 10 entry points + reserved[8] (QTI extensions) */
+typedef struct proxy {
+    camera3_device_t dev;          /* what the provider holds; dev.ops -> ops[] */
+    camera3_device_t *backend;     /* offset 136: read by the trampolines */
+    void *ops[OPS_SLOTS];
+    const void *cb;                /* camera3_callback_ops given to initialize() */
+    int is_oem, initialized;
+    char id[16];
+} proxy_t;
+_Static_assert(__builtin_offsetof(camera3_device_t, ops) == 120, "camera3_device layout");
+_Static_assert(__builtin_offsetof(proxy_t, backend) == 136, "proxy layout");
+
+/* Forward slot i to the current backend with the backend as the device argument; every argument
+ * register and the stack are left untouched. A slot the backend leaves NULL returns -ENOSYS. */
+#define TRAMP(i) \
+    __attribute__((naked)) static void tramp_##i(void) { \
+        __asm__ volatile("hint #34\n"                 /* bti c */ \
+                         "ldr x16, [x0, #136]\n"      /* proxy->backend */ \
+                         "ldr x17, [x16, #120]\n"     /* backend->ops */ \
+                         "ldr x17, [x17, #" #i "*8]\n" \
+                         "cbz x17, 1f\n" \
+                         "mov x0, x16\n" \
+                         "br x17\n" \
+                         "1: mov x0, #-38\n" \
+                         "ret\n"); }
+TRAMP(0) TRAMP(1) TRAMP(2) TRAMP(3) TRAMP(4) TRAMP(5) TRAMP(6) TRAMP(7) TRAMP(8)
+TRAMP(9) TRAMP(10) TRAMP(11) TRAMP(12) TRAMP(13) TRAMP(14) TRAMP(15) TRAMP(16) TRAMP(17)
+static void (*const kTramp[OPS_SLOTS])(void) = {
+    tramp_0, tramp_1, tramp_2, tramp_3, tramp_4, tramp_5, tramp_6, tramp_7, tramp_8,
+    tramp_9, tramp_10, tramp_11, tramp_12, tramp_13, tramp_14, tramp_15, tramp_16, tramp_17};
+
+/* Filled in by the layer when the provider initialises it (after this library loads), so they
+ * are read through the layer's exported variables at use time. */
+static const camera_module_t **g_camx_pp;        /* OemLayer g_camx_camera_module */
+static void (**g_set_oplus_cb_pp)(const void *); /* OemLayer pSetOplusCallback (camx setter) */
+static const void *g_oplus_cb;                   /* OemLayer::g_camx_oplus_callback_ops */
+#define g_camx (g_camx_pp ? *g_camx_pp : (const camera_module_t *)0)
+#define g_set_oplus_cb (g_set_oplus_cb_pp ? *g_set_oplus_cb_pp : (void (*)(const void *))0)
+static int g_open_oem, g_open_direct;
+static const void *g_cb_state = (const void *)1; /* unknown until first set */
+
+/* The OnePlus layer registers callbacks in Qualcomm's HAL at load time. Keep them registered
+ * while any OnePlus-layer device is open (or nothing is open), clear them while only directly
+ * opened devices exist, as on LineageOS without the module. */
+static void update_oplus_callbacks(void) {
+    if (!g_set_oplus_cb || !g_oplus_cb) return;
+    const void *want = (__atomic_load_n(&g_open_oem, __ATOMIC_SEQ_CST) > 0 ||
+                        __atomic_load_n(&g_open_direct, __ATOMIC_SEQ_CST) == 0) ? g_oplus_cb : 0;
+    if (want != g_cb_state) {
+        g_set_oplus_cb(want);
+        g_cb_state = want;
+        __android_log_print(LOG_I, TAG, "OnePlus HAL callbacks %s", want ? "registered" : "cleared");
+    }
+}
+
+static int routing_enabled(void) {
+    char v[92] = {0};
+    if (!g_camx || !g_set_oplus_cb || !g_oplus_cb) return 0;
+    __system_property_get("persist.vendor.camera.oplus_los.route", v);
+    return !(v[0] == '0' && v[1] == 0);
+}
+
+static int open_backend(proxy_t *p, int oem, camera3_device_t **out) {
+    struct hw_device_t *d = 0;
+    int *cnt = oem ? &g_open_oem : &g_open_direct;
+    __atomic_add_fetch(cnt, 1, __ATOMIC_SEQ_CST);
+    update_oplus_callbacks();
+    int r = oem ? g_real_open(&g_real->common, p->id, &d)
+                : g_camx->common.methods->open(&g_camx->common, p->id, &d);
+    if (r != 0 || !d) {
+        __atomic_sub_fetch(cnt, 1, __ATOMIC_SEQ_CST);
+        update_oplus_callbacks();
+        return r ? r : -19;
+    }
+    *out = (camera3_device_t *)d;
+    return 0;
+}
+
+static void close_backend(proxy_t *p) {
+    if (!p->backend) return;
+    p->backend->common.close(&p->backend->common);
+    p->backend = 0;
+    __atomic_sub_fetch(p->is_oem ? &g_open_oem : &g_open_direct, 1, __ATOMIC_SEQ_CST);
+    update_oplus_callbacks();
+}
+
+static void adopt_backend(proxy_t *p, camera3_device_t *b, int oem) {
+    p->backend = b;
+    p->is_oem = oem;
+    p->dev.priv = b->priv;
+}
+
+static int proxy_initialize(const struct camera3_device *dev, const void *cb) {
+    proxy_t *p = (proxy_t *)dev;
+    p->cb = cb;
+    p->initialized = 1;
+    return p->backend->ops->initialize(p->backend, cb);
+}
+
+/* Move the device to the other backend between sessions (configure_streams is only called with
+ * no requests in flight). On failure the previous backend is reopened. */
+static int switch_backend(proxy_t *p, int oem) {
+    int was = p->is_oem;
+    close_backend(p);
+    camera3_device_t *b = 0;
+    int r = open_backend(p, oem, &b);
+    if (r == 0 && p->initialized && (r = b->ops->initialize(b, p->cb)) != 0) {
+        b->common.close(&b->common);
+        __atomic_sub_fetch(oem ? &g_open_oem : &g_open_direct, 1, __ATOMIC_SEQ_CST);
+        update_oplus_callbacks();
+    }
+    if (r == 0) {
+        adopt_backend(p, b, oem);
+        __android_log_print(LOG_I, TAG, "camera %s: session moved to %s", p->id,
+                            oem ? "the OnePlus layer" : "Qualcomm's HAL (stock path)");
+        return 0;
+    }
+    __android_log_print(LOG_E, TAG, "camera %s: could not move session (%d), staying", p->id, r);
+    if (open_backend(p, was, &b) == 0) {
+        adopt_backend(p, b, was);
+        if (p->initialized) b->ops->initialize(b, p->cb);
     }
     return r;
+}
+
+static int proxy_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
+    proxy_t *p = (proxy_t *)dev;
+    int oem = !cfg || cfg->operation_mode >= 0x8000 || !routing_enabled();
+    if (oem != p->is_oem) {
+        int r = switch_backend(p, oem);
+        if (r) return r;
+    }
+    if (!p->backend) return -19;
+    return p->is_oem ? oem_configure(p->backend, cfg)
+                     : p->backend->ops->configure_streams(p->backend, cfg);
+}
+
+static int proxy_close(struct hw_device_t *d) {
+    proxy_t *p = (proxy_t *)d;
+    close_backend(p);
+    free(p);
+    return 0;
+}
+
+static int wrap_open(const struct hw_module_t *mod, const char *id, struct hw_device_t **out) {
+    (void)mod;
+    proxy_t *p = calloc(1, sizeof(*p));
+    if (!p) return g_real_open(&g_real->common, id, out);
+    for (int i = 0; id && id[i] && i < (int)sizeof(p->id) - 1; i++) p->id[i] = id[i];
+    camera3_device_t *b = 0;
+    int r = open_backend(p, 1, &b);           /* start on the OnePlus layer, as before */
+    if (r) { free(p); return r; }
+    memcpy(&p->dev, b, sizeof(p->dev));         /* tag, version, module, reserved, priv */
+    p->dev.common.close = proxy_close;
+    for (int i = 0; i < OPS_SLOTS; i++)
+        p->ops[i] = ((void **)b->ops)[i] ? (void *)kTramp[i] : 0;
+    p->ops[0] = (void *)proxy_initialize;
+    p->ops[1] = (void *)proxy_configure;
+    p->dev.ops = (camera3_device_ops_t *)p->ops;
+    adopt_backend(p, b, 1);
+    *out = &p->dev.common;
+    __android_log_print(LOG_I, TAG, "camera %s: opened (third-party routing %s)", p->id,
+                        routing_enabled() ? "on" : "off");
+    return 0;
 }
 
 __attribute__((constructor)) static void init(void) {
@@ -289,6 +446,13 @@ __attribute__((constructor)) static void init(void) {
         return;
     }
     g_get_vendor_tag_ops = (void (*)(vendor_tag_ops_t *))dlsym(h, "_ZN8OemLayer18get_vendor_tag_opsEP14vendor_tag_ops");
+    /* Qualcomm's module and the callback registration, as the layer set them up while loading */
+    g_camx_pp = (const camera_module_t **)dlsym(h, "g_camx_camera_module");
+    g_set_oplus_cb_pp = (void (**)(const void *))dlsym(h, "pSetOplusCallback");
+    g_oplus_cb = dlsym(h, "_ZN8OemLayer25g_camx_oplus_callback_opsE");
+    if (!g_camx_pp || !g_set_oplus_cb_pp || !g_oplus_cb)
+        __android_log_print(LOG_E, TAG, "stock path symbols missing: all sessions stay on the "
+                            "OnePlus layer");
     memcpy(HMI, g_real, HMI_SIZE);
     camera_module_t *me = (camera_module_t *)HMI;
     g_real_open = g_real->common.methods->open;

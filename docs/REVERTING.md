@@ -96,16 +96,22 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 | Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `981a40f9e2031faa1b1f40b9000f40b9` → `…1b2f40b9…` |
 | Camera processing library | `/odm/lib64/libAlgoProcess.so` | see the two hex strings at the `fixlib` call |
 
+## 4b. Isolation (v0.32)
+
+| Change | Revert |
+|---|---|
+| Third-party sessions reopened on Qualcomm's HAL (wrapper proxy) | at runtime: `setprop persist.vendor.camera.oplus_los.route 0`; permanently: build the wrapper from `history`'s v0.31 `oemwrap.c` (in git history) |
+| Camera props answered in-process (`stubs_scoped_props`, `camera_scoped_props`) | `--skip stubs_scoped_props --skip camera_scoped_props` and put the props from `tools/gen_losprops.py` back into `module/system.prop` |
+| 16 MB log buffers only in debug mode | `touch /data/adb/modules/oplus_camera_los/debug` |
+
 ## 5. System-level settings (module scripts)
 
 | Where | Setting | Effect of removing it |
 |---|---|---|
-| `system.prop` | `ro.build.version.oplus.api`, `.sub_api`, `ro.build.version.oplusrom`, `ro.oplus.system.camera.name` | the app/SDK take the "not OnePlus" path for these checks |
-| `system.prop` | `ro.oplus.camera.defercap.support`, `…defercap.all.quick.visible.support` | **required:** the app throws on start without the first |
-| `system.prop` | `persist.camera.override_*`, `persist.sys.feature.localhdr_version`, `…uhdr.support`, `persist.sys.oplus.anim_level` | feature flags the app reads; values from OxygenOS (set in memory only) |
+| `tools/gen_losprops.py` (in-process, not system-wide since v0.32) | OnePlus ROM/API props, deferred capture (**required**), HDR and animation flags | edit `PROPS` to change what the camera sees |
 | `system.prop` | `ro.vendor.camera.res.fmq.size=8388608` | back to 1 MB: binder overflows, portrait crash |
 | `service.sh` | `persist.vendor.camera.privapp.list += com.oplus.camera` (memory only) | the HAL no longer treats the app as a privileged client |
-| `service.sh` | `logcat -G 16M` (runtime only) | smaller log history in debug bundles |
+| `service.sh` | `logcat -G 16M`, only when `$MODDIR/debug` exists (since v0.32) | smaller log history in debug bundles |
 | `service.sh` | layer watchdog | no automatic fallback if the layer crashes the HAL |
 | `sepolicy.rule` | each rule is commented with its reason | the matching denial returns |
 | `post-fs-data.sh` | creates `camera_rus` dirs, relabels `cam_alog`, `camera_process`, `camera_remote_dump` (originals saved in `.relabeled`) | the app can't write its processing/log data |
@@ -124,4 +130,4 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 | v0.24 | all `system/vendor/*` files (moved to `/odm`) | `/vendor` overlay broke GPU apps |
 | v0.24 | `ro.vendor.camera.res.fmq.size=1` (v0.23) | binder overflows and stalls; replaced by 8 MB |
 
-Scripts and config of every released version (v0.1–v0.30) are kept in `history/`, and each version's full file list in `history/vX.Y/FILES.txt`. `diff -ru history/v0.23 module` shows exactly what changed since then.
+Scripts and config of every released version (v0.1 to the current version) are kept in `history/`, and each version's full file list in `history/vX.Y/FILES.txt`. `diff -ru history/v0.23 module` shows exactly what changed since then.

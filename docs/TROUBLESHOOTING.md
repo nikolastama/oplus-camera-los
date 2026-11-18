@@ -21,6 +21,7 @@ Removing the module deletes these bundles.
 | Browser (Chromium) won't open, "GPU process isn't usable"; other apps' camera flaky | Something overlays `/vendor`. `summary.txt` → overlay mounts must have no `/vendor` line. Old module versions left files in the metamodule copy; v0.28+ removes them. Another module shipping `system/vendor` causes the same. |
 | Thumbnail opens a blurry photo | The gallery opened the quick JPEG; the final image replaces it a few seconds later. The hand-off waits up to 8 s; very heavy shots can take longer. |
 | Black preview after switching video resolution/frame rate; log: `Unable to set buffer count for stream N … (-38)`, then `Unable to connect to native window … (-22)` | Encoder buffer request too large (fixed in v0.31). If it comes back, look for `max_buffers … -> 40` from `OplusCamLosWrap` in the log and compare it with the HAL's request. |
+| Other camera app (Instagram, Aperture …) misbehaves | Check the log for `OplusCamLosWrap: camera N: session moved to Qualcomm's HAL (stock path)`. If it's missing, routing is off (`persist.vendor.camera.oplus_los.route`) or the layer's symbols weren't found (`stock path symbols missing`). |
 | Camera HAL restarts (tombstone in `vendor.qti.camera.provider-service_64`, `ExtensionModule::RecoveryThread`) | CHI's own recovery after a stuck request. Send the bundle. |
 
 ## Known log noise (harmless)

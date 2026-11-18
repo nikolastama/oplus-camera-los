@@ -44,7 +44,7 @@ All of it disappears with the module:
 | Area | Change |
 |---|---|
 | Files | New files on `/system_ext` (app, SDK, libraries, configs) and `/odm` (OnePlus camera layer). Two ROM libraries are replaced by fixed copies inside the module (`/odm/lib64/libAlgoProcess.so` overlaid; the offline camera service shadowed via `/odm/lib64`). Nothing under `/vendor`. |
-| Properties | `system.prop`: OnePlus API/ROM version and deferred-capture props the app requires, and a larger camera result queue (`ro.vendor.camera.res.fmq.size`). `service.sh`: `persist.vendor.camera.privapp.list` in memory only, plus larger logd buffers (runtime only). |
+| Properties | One system-wide: a larger camera result queue (`ro.vendor.camera.res.fmq.size`). The OnePlus camera's own props are answered inside its process. `service.sh` adds `com.oplus.camera` to `persist.vendor.camera.privapp.list` (in memory; LineageOS's camera service applies it only to that package). Larger log buffers only in debug mode (`touch …/oplus_camera_los/debug`). |
 | SELinux | `sepolicy.rule`: a few rules for the camera app's data dirs, the DSP library watch, and the camera HAL reading system props. |
 | Data | `/data/system/camera_rus`, `/data/vendor/camera_rus` (created if absent); `/data/vendor/cam_alog`, `camera_process` and `camera_remote_dump` relabelled for the camera (original labels saved and restored on removal). |
-| Camera HAL | LineageOS already sets `ro.hardware.camera=oemlayer.v2` without shipping that layer. With the module the layer exists, so **all** camera apps go through OnePlus's camera layer, the same as on OxygenOS. |
+| Camera HAL | The provider loads the module's camera layer for every app, but only the OnePlus camera's sessions run through it. Every other app's session is reopened directly on Qualcomm's HAL, the stock LineageOS path (ARCHITECTURE.md, Isolation). |

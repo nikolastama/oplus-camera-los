@@ -31,9 +31,10 @@ import patches as P  # noqa: E402
 APP_PATCHES = [P.camera_font, P.camera_blur_seginit_guard, P.camera_uifirst,
                P.strip_oem_component_permissions, P.vendor_tag_aliases, P.camera_blur_license_path,
                P.camera_defer_ufs_probe, P.camera_gallery_fallback, P.camera_disable_oem_components,
-               P.camera_drop_embedded_libs]
+               P.camera_scoped_props, P.camera_drop_embedded_libs]
 SDK_PATCHES = [P.sdk_runtime, P.sdk_facebeauty_path, P.sdk_session_package_tag, P.vendor_tag_aliases]
 ADAPTER_PATCHES = [P.vendor_tag_aliases]
+STUBS_PATCHES = [P.stubs_scoped_props]
 
 APK_SRC = 'my_product/app/OplusCamera/OplusCamera.apk'
 SDK_SRC = 'my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar'
@@ -120,13 +121,14 @@ def main():
         print('app:     ', ' '.join(f.__name__ for f in APP_PATCHES))
         print('sdk:     ', ' '.join(f.__name__ for f in SDK_PATCHES))
         print('adapter: ', ' '.join(f.__name__ for f in ADAPTER_PATCHES))
+        print('stubs:   ', ' '.join(f.__name__ for f in STUBS_PATCHES))
         print('native:   apsclient_force_java_heif', ' '.join(edits))
         print('components disabled:', ' '.join(P.OEM_ONLY_COMPONENTS))
         return
     for need in ('dump', 'apktool', 'signer', 'keystore', 'ks_pass'):
         if not getattr(args, need):
             ap.error(f'--{need.replace("_", "-")} is required')
-    known = {f.__name__ for f in APP_PATCHES + SDK_PATCHES} | {'apsclient_force_java_heif'} | set(edits)
+    known = {f.__name__ for f in APP_PATCHES + SDK_PATCHES + STUBS_PATCHES} | {'apsclient_force_java_heif'} | set(edits)
     bad = [s for s in args.skip if s not in known]
     if bad:
         ap.error(f'unknown --skip {bad}; see --list-patches')
@@ -172,7 +174,8 @@ def main():
     apktool_patch(args, src(dump, SDK_SRC), work / 'sdk', SDK_PATCHES, fw / 'com.oplus.camera.unit.sdk.jar')
     apktool_patch(args, src(dump, ADAPTER_SRC), work / 'adapter', ADAPTER_PATCHES,
                   fw / 'com.oplus.camera.unit.sdk.adapter.jar')
-    shutil.copy2(REPO / 'prebuilt/oplus-camera-stubs.jar', fw / 'oplus-camera-stubs.jar')
+    apktool_patch(args, REPO / 'prebuilt/oplus-camera-stubs.jar', work / 'stubs', STUBS_PATCHES,
+                  fw / 'oplus-camera-stubs.jar')
 
     print('[4/6] camera app')
     apk = src(dump, APK_SRC)

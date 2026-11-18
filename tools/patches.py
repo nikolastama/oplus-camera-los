@@ -358,3 +358,56 @@ def camera_drop_embedded_libs(root):
     if d.exists():
         shutil.rmtree(d)
     return 'lib/'
+
+
+# ---------------------------------------------------------------- props scoped to the camera (v0.32)
+
+SMALI_STUBS_DIR = Path(__file__).parent / 'smali-stubs'
+_SP_METHODS = ['get(Ljava/lang/String;)Ljava/lang/String;',
+               'get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;',
+               'getInt(Ljava/lang/String;I)I', 'getLong(Ljava/lang/String;J)J',
+               'getBoolean(Ljava/lang/String;Z)Z']
+
+
+def stubs_scoped_props(root):
+    """oplus-camera-stubs.jar: route every android.os.SystemProperties read (get/getInt/getLong/
+    getBoolean) through com.oplus.camera.los.LosProps, which answers the OnePlus camera's own keys
+    (tools/gen_losprops.py) and passes every other key through. The props therefore no longer
+    have to be set system-wide in system.prop."""
+    root = Path(root)
+    dst = root / 'smali/com/oplus/camera/los'
+    dst.mkdir(parents=True, exist_ok=True)
+    (dst / 'LosProps.smali').write_text((SMALI_STUBS_DIR / 'LosProps.smali').read_text())
+    n = 0
+    for f in root.glob('smali*/**/*.smali'):
+        if f.name == 'LosProps.smali':
+            continue
+        t = f.read_text(encoding='utf-8')
+        u = t
+        for m in _SP_METHODS:
+            u = u.replace('Landroid/os/SystemProperties;->' + m, 'Lcom/oplus/camera/los/LosProps;->' + m)
+        if u != t:
+            n += 1
+            f.write_text(u, encoding='utf-8')
+    if not n:
+        raise ValueError('no SystemProperties reads found in the stubs jar')
+    return f'{n} classes'
+
+
+def camera_scoped_props(root):
+    """App: two helpers read persist.sys.oplus.anim_level by reflection on
+    android.os.SystemProperties.get(String); point them at LosProps (the app's other reads already
+    go through com.oplus.wrapper.os.SystemProperties in the stubs jar)."""
+    done = 0
+    for f in Path(root).glob('smali*/**/*.smali'):
+        t = f.read_text(encoding='utf-8')
+        if '"persist.sys.oplus.anim_level"' not in t and 'Ld3/a;' not in t:
+            continue
+        if f.as_posix().endswith(('/s3/i.smali', '/d3/a.smali')) and '"android.os.SystemProperties"' in t:
+            t = t.replace('const-string v1, "android.os.SystemProperties"',
+                          'const-string v1, "com.oplus.camera.los.LosProps"')
+            f.write_text(t, encoding='utf-8')
+            done += 1
+    if done != 2:
+        raise ValueError(f'expected 2 reflective SystemProperties reads, patched {done}')
+    return 's3/i, d3/a'

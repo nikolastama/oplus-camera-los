@@ -17,7 +17,7 @@ A KernelSU module that runs the stock OnePlus camera app from OxygenOS on **offi
 - All rear lenses and zoom (the viewfinder follows the zoom buttons and pinch).
 - Portrait mode, video, front camera.
 - Thumbnail opens the photo in your gallery app (there is no OnePlus Gallery on LineageOS).
-- Other camera apps keep working.
+- Other camera apps keep working: their sessions run on LineageOS's own camera path, not through OnePlus code.
 
 **Known limitations:** OnePlus-only extras that depend on OnePlus system services are absent: the OnePlus Gallery hand-off, HeyTap/OPPO accessories, cloud "AI" features, and SAU tuning updates. The ToF and color-spectrum sensors aren't exposed by LineageOS's kernel, so the HAL logs harmless errors about them.
 
