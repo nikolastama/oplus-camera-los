@@ -109,3 +109,10 @@ allow hal_camera_default system_prop file { read open getattr map }
 # DSP library folders for changes while offloading algorithms to the DSP (read-only inotify)
 allow priv_app_36 { vendor_file adsprpcd_file } dir { watch }
 allow priv_app { vendor_file adsprpcd_file } dir { watch }
+# v0.33: silence two harmless probes (nothing is allowed). Preview threads read
+# /sys/fs/selinux/enforce on every frame batch, and the app looks up the suspend HAL directly
+# before falling back to PowerManager wake locks. The app keeps working when both are refused.
+dontaudit priv_app_36 selinuxfs file { read open }
+dontaudit priv_app selinuxfs file { read open }
+dontaudit priv_app_36 hal_system_suspend_service service_manager find
+dontaudit priv_app hal_system_suspend_service service_manager find

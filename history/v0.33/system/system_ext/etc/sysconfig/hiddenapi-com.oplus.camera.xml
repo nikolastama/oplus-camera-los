@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OnePlus Camera module: the stock camera and its SDK call framework internals. -->
+<config>
+    <hidden-api-whitelisted-app package="com.oplus.camera"/>
+</config>

@@ -19,6 +19,9 @@ if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
   resetprop -n oplus.autotest.camera.debug.forcelog true
   resetprop -n persist.camera.assert.panic true
   resetprop -n persist.sys.assert.panic true
+  # The default 256 KB log buffers hold only ~15 s of a verbose camera session; 16 MB holds
+  # ~15 min. Runtime-only, back to the ROM default on the next boot.
+  logcat -G 16M >/dev/null 2>&1
   am force-stop com.oplus.camera >/dev/null 2>&1
   pkill -f camera.provider-service >/dev/null 2>&1
   ( sleep 20; dumpsys media.camera > "$SNAP.tmp" 2>&1; mv "$SNAP.tmp" "$SNAP"
@@ -92,13 +95,19 @@ sha256sum "$W"/bin/* > "$W/bin/SHA256SUMS" 2>/dev/null
   ls -la /vendor/lib64/hw | grep -i "mapper\|gralloc\|alloc"
   ls -la /vendor/lib64 | grep -i "snap\|gralloc"
 } > "$W/vendor-hashes.txt" 2>&1
-# the processing (APS) log files the camera writes itself: newest four, at most ~40 MB in total
-mkdir -p "$W/cam_alog"; n=0
+# the processing (APS) log files the camera writes itself: the newest ones, ~40 MB in total. With
+# debug logging a single file reaches 50 MB in a minute, so a file larger than what is left of the
+# budget is cut to its last part (the most recent lines) instead of being skipped.
+mkdir -p "$W/cam_alog"; left=41943040
 for f in $(ls -t /data/vendor/cam_alog 2>/dev/null | head -4); do
-  [ -f "/data/vendor/cam_alog/$f" ] || continue
-  n=$((n + $(stat -c %s "/data/vendor/cam_alog/$f")))
-  [ $n -gt 41943040 ] && break
-  cp "/data/vendor/cam_alog/$f" "$W/cam_alog/" 2>/dev/null
+  F=/data/vendor/cam_alog/$f
+  [ -f "$F" ] || continue
+  s=$(stat -c %s "$F")
+  if [ "$s" -le "$left" ]; then
+    cp "$F" "$W/cam_alog/" 2>/dev/null; left=$((left - s))
+  else
+    tail -c "$left" "$F" > "$W/cam_alog/$f.tail" 2>/dev/null; break
+  fi
 done
 [ -f "$SNAP" ] && mv "$SNAP" "$W/dumpsys-media.camera-live-session.txt"
 

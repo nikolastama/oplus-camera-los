@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.33 (debug bundle)
+- Debug bundle: the camera's own processing logs (`cam_alog`) were left out whenever the newest file was over 40 MB, which debug logging reaches within a minute. The newest part of the file is now included.
+- Debug bundle: the Action button's first press also sets 16 MB log buffers (until reboot), so the whole test session is kept instead of the last ~15 seconds.
+- SELinux: two harmless probes from the camera app (`/sys/fs/selinux/enforce` reads during preview, a suspend-HAL lookup) are no longer logged as denials. Nothing new is allowed.
+- Troubleshooting: the start-up crash seen with "Umount modules" on, and the remaining harmless log lines from a full mode tour, are documented.
+
 ## v0.32 (isolation)
 - Other camera apps no longer run through OnePlus's camera layer: the wrapper reopens their sessions directly on Qualcomm's HAL (the stock LineageOS path) and clears the layer's HAL callbacks while they run. This fixes Instagram's shutter hanging (its JPEG was taken over by the layer's snapshot path) and Aperture failing after it. Kill switch: `persist.vendor.camera.oplus_los.route=0`.
 - The OnePlus camera's props are answered inside its own process (`LosProps`) instead of being set system-wide; `system.prop` keeps only the capture-result queue size.

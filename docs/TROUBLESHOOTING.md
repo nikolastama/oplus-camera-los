@@ -13,7 +13,7 @@ Removing the module deletes these bundles. A bundle can contain device identifie
 
 | Symptom | Cause / fix |
 |---|---|
-| Camera closes immediately; log shows `Unable to open '/system_ext/priv-app/OplusCamera/OplusCamera.apk'` | KernelSU unmounts modules for the camera. Turn off **Umount modules** for `com.oplus.camera` (and check Zygisk denylists). |
+| Camera closes immediately; log shows `Unable to open '/system_ext/priv-app/OplusCamera/OplusCamera.apk'`, or a crash in `handleBindApplication` with `Resources.getConfiguration()` on a null object | KernelSU unmounts modules for the camera. Turn off **Umount modules** for `com.oplus.camera` (and check Zygisk denylists). |
 | No camera icon | Same for your launcher. |
 | Zoom buttons do nothing / glitchy lens switching; log full of `m_pOplusCbOps is NULL` | The OnePlus layer isn't loaded. Check `summary.txt` → `layer`. If files are missing, look at the install log (dependency missing?) or `oemlayer_disabled` (watchdog). Reinstall the module. |
 | Black photos | Offline-service fix not applied (`summary.txt` → library fixes). See MAINTAINING.md B. |
@@ -32,4 +32,6 @@ These come from the vendor blobs expecting OxygenOS hardware or services. They d
 - `GetDataAsync() Unsupported sensor type`, OIS/gyro queries in SAT reprocess.
 - `libdscaalgo.so not found`: an optional OnePlus algorithm loaded by absolute `/vendor` path; skipped.
 - App: `VendorTagDescriptor: lookupTag … does not exist`, `Failed to find provider info for com.oplus.customize…`, `Access denied finding property "vendor.…"`, `A resource failed to call HardwareBuffer.close` (OnePlus app behaviour, reported only on builds with CloseGuard enabled), `Expect face scores and rectangles to be non-null`.
-- ArcSoft libraries log ordinary progress at error level (`ArcSoft_C_LN`).
+- ArcSoft libraries log ordinary progress at error level (`ArcSoft_C_LN`). OnePlus's own algorithms do the same: `NAManager … OCCEInit()/OCCERelease()`, `ALGO_CS … camCSInit()`, `MVG`, `LibHIS`, `hybridraw: GLEngine::destroy`.
+- HAL: `OsenseNativeProxyUx: could not get service(osensemanager)` (OxygenOS performance service), `IsGenericCamera() Vendor tag GenericCamera is null`, `MultispectralSensorConfig … missing`, `ReleaseOFESingleActionManagerInstance() No Instance to release`, `OplusRemoveUadThread() Not SetUadThread`.
+- App when it closes or switches mode: `ConsumerBase … abandonLocked`, `adspmsgd … 0x8000040d … exiting` (DSP log reader stopping), `Failed to find provider info for com.color.provider.removableapp`.
