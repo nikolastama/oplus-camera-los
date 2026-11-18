@@ -1,0 +1,20 @@
+# OnePlus camera: only properties the camera app, its SDK or the OnePlus framework shim read.
+# Values from OxygenOS CPH2745_16.0.10.601. Loaded at boot in memory only (never persisted);
+# they disappear when the module is removed.
+ro.build.version.oplus.api=38
+ro.build.version.oplus.sub_api=50
+ro.build.version.oplusrom=V16.1.0
+ro.oplus.system.camera.name=com.oplus.camera
+ro.oplus.camera.defercap.support=1
+ro.oplus.camera.defercap.all.quick.visible.support=1
+persist.camera.override_enable=true
+persist.camera.override_preview_hdr_support=false
+persist.sys.feature.localhdr_version=2
+persist.sys.feature.uhdr.support=true
+persist.sys.oplus.anim_level=1
+# Capture-result metadata queue the camera HAL uses to hand results to cameraserver (the AOSP
+# cameraserver may read it for its queue to apps too). The OnePlus layer's results are 0.5-1.2 MB, more than LineageOS's
+# default 1 MB queue holds, so results spilled into binder transactions, which are capped at
+# 1 MB per process: results were dropped and portrait mode / camera apps stalled or errored.
+# 8 MB fits several results; the HAL then never needs the binder fallback.
+ro.vendor.camera.res.fmq.size=8388608

@@ -1,0 +1,192 @@
+package android.app;
+
+import android.app.ActivityManager;
+import android.content.ComponentName;
+import android.content.pm.ApplicationInfo;
+import android.util.Log;
+import android.os.Bundle;
+import android.os.Parcel;
+import android.os.RemoteException;
+import com.oplus.app.OplusAppInfo;
+import com.oplus.app.OplusTaskInfoChangeListener;
+import com.oplus.osense.complexscene.OplusComplexSceneObserver;
+import java.util.List;
+
+/* loaded from: classes.dex */
+public class OplusActivityManager extends OplusBaseActivityManager implements IOplusActivityManager, IOplusActivityTaskManager {
+    private static final String TAG = "OplusActivityManager";
+    private final OplusActivityTaskManager mOplusAtm = OplusActivityTaskManager.getInstance();
+
+    public static OplusActivityManager getInstance() {
+        return LazyHolder.INSTANCE;
+    }
+
+    /* loaded from: classes.dex */
+    private static class LazyHolder {
+        private static final OplusActivityManager INSTANCE = new OplusActivityManager();
+
+        private LazyHolder() {
+        }
+    }
+
+    public void swapDockedFullscreenStack() throws RemoteException {
+    }
+
+    @Override
+    public ComponentName getTopActivityComponentName() throws RemoteException {
+        return this.mOplusAtm.getTopActivityComponentName();
+    }
+
+    @Override
+    public ApplicationInfo getTopApplicationInfo() throws RemoteException {
+        return this.mOplusAtm.getTopApplicationInfo();
+    }
+
+    @Override
+    public List<OplusAppInfo> getAllTopAppInfos() throws RemoteException {
+        return this.mOplusAtm.getAllTopAppInfos();
+    }
+
+    @Override
+    public List<OplusAppInfo> getAllTopApps() throws RemoteException {
+        return this.mOplusAtm.getAllTopApps();
+    }
+
+    @Override // android.app.IOplusActivityManager
+    public boolean putConfigInfo(String configName, Bundle bundle, int flag, int userId) throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("android.app.IActivityManager");
+            data.writeString(configName);
+            data.writeBundle(bundle);
+            data.writeInt(flag);
+            data.writeInt(userId);
+            this.mRemote.transact(10062, data, reply, 0);
+            reply.readException();
+            boolean success = Boolean.valueOf(reply.readString()).booleanValue();
+            return success;
+        } catch (Exception e) {
+            Log.e(TAG, e.toString());
+            return true;
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    @Override // android.app.IOplusActivityManager
+    public Bundle getConfigInfo(String configName, int flag, int userId) throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        new Bundle();
+        try {
+            data.writeInterfaceToken("android.app.IActivityManager");
+            data.writeString(configName);
+            data.writeInt(flag);
+            data.writeInt(userId);
+            this.mRemote.transact(10063, data, reply, 0);
+            reply.readException();
+            Bundle bundle = reply.readBundle();
+            return bundle;
+        } catch (Exception e) {
+            Log.e(TAG, e.toString());
+            return null;
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    public java.util.List<String> getGlobalPkgWhiteList(int type) throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public java.util.List<String> getStageProtectListFromPkg(String callerPkg, int type) throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public java.util.List<String> getStageProtectListFromPkgAsUser(String callerPkg, int type, int userId) throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public java.util.List<String> getStageProtectList(int type) throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public java.util.List<String> getStageProtectListAsUser(int type, int userId) throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public java.util.List<String> getGlobalProcessWhiteList() throws android.os.RemoteException {
+        return new java.util.ArrayList<>();
+    }
+
+    public void addStageProtectInfo(String callerPkg, String pkg, java.util.List<String> processList, String reason, long timeout, com.oplus.app.IOplusProtectConnection connection) throws android.os.RemoteException {
+    }
+
+    public void removeStageProtectInfo(String pkg, String callerPkg) throws android.os.RemoteException {
+    }
+
+    public void addBackgroundRestrictedInfo(String callerPkg, java.util.List<String> targetPkgList) throws android.os.RemoteException {
+    }
+
+    /**
+     * Registers an OSense complex-scene observer when the Oplus activity-manager extension is
+     * available. The AOSP compatibility implementation has no corresponding system service, so
+     * report that registration is unsupported.
+     */
+    public boolean registerComplexSceneObserver(
+            Bundle bundle, OplusComplexSceneObserver observer) throws RemoteException {
+        return false;
+    }
+
+    /**
+     * See {@link #registerComplexSceneObserver(Bundle, OplusComplexSceneObserver)}.
+     */
+    public boolean unregisterComplexSceneObserver(
+            Bundle bundle, OplusComplexSceneObserver observer) throws RemoteException {
+        return false;
+    }
+
+    /**
+     * Compatibility API used by Oplus applications to test whether one of their processes is
+     * alive. Process enumeration is restricted on modern Android, so return an empty result when
+     * the Oplus activity-manager extension is unavailable.
+     */
+    public List<ActivityManager.RunningAppProcessInfo> getRunningAppProcesses() {
+        return new java.util.ArrayList<>();
+    }
+
+    @Override
+    public boolean registerTaskInfoChangeListener(
+            OplusTaskInfoChangeListener listener, int type, int displayId) throws RemoteException {
+        return this.mOplusAtm.registerTaskInfoChangeListener(listener, type, displayId);
+    }
+
+    @Override
+    public boolean unregisterTaskInfoChangeListener(OplusTaskInfoChangeListener listener)
+            throws RemoteException {
+        return this.mOplusAtm.unregisterTaskInfoChangeListener(listener);
+    }
+
+    // --- OxygenOS 16 camera compatibility (LineageOS fallbacks) ---
+
+    /** No foldable display on this device. */
+    public boolean requestDeviceFolded(int displayId, boolean folded) {
+        return false;
+    }
+
+    /** Start the activity through the calling app's own context. */
+    public void startActivity(android.content.Intent intent) {
+        android.app.Application app = android.app.ActivityThread.currentApplication();
+        if (app == null || intent == null) return;
+        android.content.Intent i = new android.content.Intent(intent);
+        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            app.startActivity(i);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "startActivity failed", e);
+        }
+    }
+}

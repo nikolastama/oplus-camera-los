@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OnePlus Camera module: shared libraries the camera loads.
+     oplus.camera.stubs carries the OnePlus framework classes LineageOS lacks; it is a
+     dependency of the SDK, so both the SDK and the app see it without touching the boot
+     classpath. -->
+<permissions>
+    <library name="oplus.camera.stubs"
+        file="/system_ext/framework/oplus-camera-stubs.jar" />
+    <library name="com.oplus.camera.unit.sdk.adapter"
+        file="/system_ext/framework/com.oplus.camera.unit.sdk.adapter.jar" />
+    <library name="com.oplus.camera.unit.sdk"
+        file="/system_ext/framework/com.oplus.camera.unit.sdk.jar"
+        dependency="oplus.camera.stubs" />
+</permissions>

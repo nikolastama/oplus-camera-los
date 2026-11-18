@@ -1,0 +1,15 @@
+# proprietary firmware files and build output never go in the repo
+out/
+work/
+*.apk
+*.jar
+!prebuilt/oplus-camera-stubs.jar
+*.so
+!prebuilt/camera.oemlayer.wrap.so
+*.zip
+*.tar.gz
+# signing keys
+*.jks
+*.keystore
+*.p12
+__pycache__/
