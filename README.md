@@ -21,14 +21,37 @@ A KernelSU module that runs the stock OnePlus camera app from OxygenOS on **offi
 
 **Known limitations:** OnePlus-only extras that depend on OnePlus system services are absent: the OnePlus Gallery hand-off, HeyTap/OPPO accessories, cloud "AI" features, and SAU tuning updates. The ToF and color-spectrum sensors aren't exposed by LineageOS's kernel, so the HAL logs harmless errors about them.
 
-## Quick start
+## Install
 
-1. Install KernelSU (or KernelSU-Next) and the **meta-overlayfs** metamodule.
-2. Flash `oplus-camera-los-vX.Y.zip` in the KernelSU manager and reboot.
-3. KernelSU → Superuser → **Camera (com.oplus.camera)** → turn **"Umount modules" off**. Do the same for your launcher if your default is to unmount.
-4. Open **Camera**.
+You need a OnePlus 15 on official LineageOS 24, rooted with **KernelSU** or **KernelSU-Next**, and the module zip (`oplus-camera-los-vX.Y.zip`). This repository doesn't ship the zip because it contains OnePlus files. Build it from an OxygenOS firmware dump with [docs/BUILDING.md](docs/BUILDING.md).
 
-Full guide: [docs/INSTALL.md](docs/INSTALL.md). Removal is described there too.
+**1. Install the meta-overlayfs metamodule**
+
+KernelSU doesn't mount module files by itself. A *metamodule* does that, and this module is built and tested with **meta-overlayfs**, KernelSU's reference metamodule.
+
+1. Download the meta-overlayfs zip from the KernelSU project's releases.
+2. KernelSU manager → **Modules** → **Install** → choose the meta-overlayfs zip.
+3. Reboot.
+
+Skip this if you already have meta-overlayfs. Other metamodules may work but aren't tested.
+
+**2. Install the camera module**
+
+1. KernelSU manager → **Modules** → **Install** → choose `oplus-camera-los-vX.Y.zip`.
+2. Read the install log. It checks the device, the ROM and the camera libraries, and stops with a message if something is missing.
+3. Reboot.
+
+**3. Set "Umount modules" correctly**
+
+If KernelSU unmounts modules for an app, that app can't see the module's files. The camera then can't find its own APK and closes right away, and the launcher can't show its icon.
+
+1. KernelSU manager → **Superuser** → find **Camera** (`com.oplus.camera`). Open its **App Profile** and turn **Umount modules off**.
+2. Do the same for your **launcher** (for example Trebuchet, LineageOS's launcher) if **Umount modules** is on by default. Check the default under KernelSU settings → **Umount modules by default**.
+3. If you use Zygisk Next, Hide My Applist or a denylist tool, keep the camera and the launcher off their lists too.
+
+**4. Open Camera**
+
+To update, flash the new zip over the old one and reboot. To remove it, delete the module in the KernelSU manager and reboot. The app, its data and every change are removed, and your photos are kept. Full details are in [docs/INSTALL.md](docs/INSTALL.md), and problems are covered in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Documentation
 
