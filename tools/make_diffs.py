@@ -67,6 +67,7 @@ def main():
     record(args, B.src(args.dump, B.APK_SRC), 'app', B.APP_PATCHES, D / 'app')
     record(args, B.src(args.dump, B.SDK_SRC), 'sdk', B.SDK_PATCHES, D / 'sdk')
     record(args, B.src(args.dump, B.ADAPTER_SRC), 'sdk-adapter', B.ADAPTER_PATCHES, D / 'sdk-adapter')
+    record(args, HERE.parent / 'prebuilt/oplus-camera-stubs.jar', 'stubs', B.STUBS_PATCHES, D / 'stubs')
 
 
 if __name__ == '__main__':

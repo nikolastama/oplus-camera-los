@@ -39,7 +39,9 @@ Byte-level originals of every native edit are stored in `tools/binpatches.json` 
 | 7 | `camera_defer_ufs_probe` | `diffs/app/07-…` | Deferred capture reads `/proc/devinfo/ufs` (EACCES → crash). |
 | 8 | `camera_gallery_fallback` | `diffs/app/08-…` (adds `tools/smali/LosGalleryFallback*.smali`) | Thumbnail opens nothing without OnePlus Gallery. |
 | 9 | `camera_disable_oem_components` | `diffs/app/09-…` | Re-enables the components below (use `--enable-component` for single ones). |
-| 10 | `camera_drop_embedded_libs` (debloat) | `diffs/app/10-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 39 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
+| 10 | `restrict_exported_components` | next `make_diffs.py` run (see `diffs/README.md`) | `EponaProvider` and six more components are reachable by any app again (`android:exported="true"` without a permission). |
+| 11 | `camera_scoped_props` | next `make_diffs.py` run | The app's two reflective `anim_level` reads go to the real system property (unset on LineageOS). |
+| 12 | `camera_drop_embedded_libs` (debloat) | `diffs/app/10-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 39 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
 
 ### Components disabled (debloat), `tools/patches.py: OEM_ONLY_COMPONENTS`
 

@@ -87,12 +87,13 @@ module/     scripts that run on the phone (install, boot, action button, uninsta
 overlay/    permission and shared-library XMLs
 prebuilt/   our own small binaries (camera-layer wrapper, framework stubs)
 tools/      build_module.py (firmware dump → zip), patches, analysis helpers
+tests/      checks that need no firmware (patches vs diffs/, shell helpers, wrapper build)
 diffs/      one diff per app/SDK patch, for review
 history/    scripts and config of every released version
 docs/       documentation
 ```
 
-To review the code, start with `module/` and `SECURITY.md`, then `tools/patches.py` next to `diffs/`. Python is formatted with `black -S` and linted with `ruff` (see `pyproject.toml`).
+To review the code, start with `module/` and `SECURITY.md`, then `tools/patches.py` next to `diffs/`. `tests/` replays every recorded diff, checks the shared shell functions and rebuilds the wrapper byte for byte; GitHub runs it with `black`, `ruff` and a syntax check of every script on each push.
 </details>
 
 ## ⚖️ License & credits

@@ -1,0 +1,10 @@
+# Scripts run on the phone with sh: a Windows checkout must not turn them into CRLF.
+*.sh       text eol=lf
+*.prop     text eol=lf
+*.rule     text eol=lf
+*.smali    text eol=lf
+*.xml      text eol=lf
+module/META-INF/** text eol=lf
+*.diff     -text
+*.so       binary
+*.jar      binary

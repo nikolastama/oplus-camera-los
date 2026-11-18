@@ -17,8 +17,10 @@ python3 tools/build_module.py \
   --out out \
   --apktool /path/to/apktool.jar \
   --signer /path/to/uber-apk-signer-1.3.0.jar \
-  --keystore /path/to/oplus-camera-module.jks --ks-alias opluscam --ks-pass '<password>'
+  --keystore /path/to/oplus-camera-module.jks --ks-alias opluscam
 ```
+
+The keystore password comes from the environment variable `OPLUS_CAMERA_KS_PASS` (for example `read -rs OPLUS_CAMERA_KS_PASS; export OPLUS_CAMERA_KS_PASS`), so it doesn't end up in your shell history. `--out` may be an existing folder: only the build's own `work/` and `module/` inside it are replaced.
 
 The result is `out/oplus-camera-los-<version>.zip`, with `out/MANIFEST.sha256` listing every file in it.
 
@@ -35,6 +37,10 @@ What the script does:
 
 `--list-patches` shows every patch and native edit. `--skip <name>` leaves one out, and `--enable-component <class>` keeps a disabled component enabled. Details: REVERTING.md.
 
+## Checks without firmware
+
+`python3 -m unittest discover -s tests` and `sh tests/test_common.sh` run the patches against the recorded `diffs/`, the module's shared shell functions on a simulated metamodule copy, the build script's options and zip writer, and (with clang/lld 18.1.3) rebuild the wrapper and compare it with `prebuilt/`. GitHub runs them, plus `black`/`ruff` and a syntax check of every script, on each push (`.github/workflows/checks.yml`).
+
 ## Reproducibility
 
-Built from the 16.0.10.601 firmware, every file matches the released module byte for byte, except the APK and the two SDK jars. Those three have identical contents and differ only in zip metadata and the signature.
+Built from the 16.0.10.601 firmware, every file matches the released module byte for byte, except the APK and the two SDK jars. Those three have identical contents and differ only in zip metadata and the signature. The module zip itself is written with fixed timestamps and order, so the same files always give the same zip.

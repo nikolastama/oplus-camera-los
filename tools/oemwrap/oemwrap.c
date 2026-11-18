@@ -130,10 +130,24 @@ static hw_module_methods_t g_methods;
 static int (*g_real_open)(const struct hw_module_t *, const char *, struct hw_device_t **);
 static uint32_t g_pkg_tag;
 static int g_pkg_tag_state; /* 0 unknown, 1 found, -1 not available */
-static camera_metadata_t *g_last; /* kept alive until the next configure */
 
 static const char kPkg[] = "com.oplus.camera";
 static vendor_tag_ops_t g_vtops; /* filled by the real layer; outlives every use */
+
+/* Each camera device the provider opens is a proxy_t (see "per-session routing proxy" below). */
+#define OPS_SLOTS 18   /* camera3_device_ops: 10 entry points + reserved[8] (QTI extensions) */
+typedef struct proxy {
+    camera3_device_t dev;          /* what the provider holds; dev.ops -> ops[] */
+    camera3_device_t *backend;     /* offset 136: read by the trampolines */
+    void *ops[OPS_SLOTS];
+    const void *cb;                /* camera3_callback_ops given to initialize() */
+    int is_oem, initialized;
+    char id[16];
+    camera_metadata_t *session_params; /* our copy with the package tag; freed on the next
+                                          configure or on close */
+} proxy_t;
+_Static_assert(__builtin_offsetof(camera3_device_t, ops) == 120, "camera3_device layout");
+_Static_assert(__builtin_offsetof(proxy_t, backend) == 136, "proxy layout");
 
 /* add_camera_metadata_entry needs the tag's type. If no vendor tag ops are registered in this
  * process, register the real layer's own ops (the same table the HAL serves to cameraserver). */
@@ -154,17 +168,16 @@ static void find_pkg_tag(void) {
         __android_log_print(LOG_E, TAG, "OemLayer::get_vendor_tag_ops not exported");
         return;
     }
-    vendor_tag_ops_t *ops_p = &g_vtops;
-    g_get_vendor_tag_ops(ops_p);
-#define ops (*ops_p)
-    if (!ops.get_tag_count || !ops.get_all_tags || !ops.get_section_name || !ops.get_tag_name) return;
-    int n = ops.get_tag_count(&ops);
+    const vendor_tag_ops_t *ops = &g_vtops;
+    g_get_vendor_tag_ops(&g_vtops);
+    if (!ops->get_tag_count || !ops->get_all_tags || !ops->get_section_name || !ops->get_tag_name) return;
+    int n = ops->get_tag_count(ops);
     if (n <= 0 || n > 65536) return;
     static uint32_t tags[65536];
-    ops.get_all_tags(&ops, tags);
+    ops->get_all_tags(ops, tags);
     for (int i = 0; i < n; i++) {
-        const char *s = ops.get_section_name(&ops, tags[i]);
-        const char *t = ops.get_tag_name(&ops, tags[i]);
+        const char *s = ops->get_section_name(ops, tags[i]);
+        const char *t = ops->get_tag_name(ops, tags[i]);
         if (s && t && !strcmp(s, "com.oplus") && !strcmp(t, "packageName")) {
             g_pkg_tag = tags[i];
             g_pkg_tag_state = 1;
@@ -173,7 +186,6 @@ static void find_pkg_tag(void) {
         }
     }
     __android_log_print(LOG_E, TAG, "vendor tag com.oplus.packageName not found");
-#undef ops
 }
 
 /* Spectra camera3_stream_t as the CamX provider builds it (offsets confirmed against the CHI
@@ -237,7 +249,8 @@ static int configure_and_cap(const struct camera3_device *dev, camera3_stream_co
     return r;
 }
 
-static int oem_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
+static int oem_configure(proxy_t *p, camera3_stream_configuration_t *cfg) {
+    const struct camera3_device *dev = p->backend;
     if (cfg && cfg->operation_mode >= 0x8000 && cfg->streams && cfg->num_streams > 0 &&
         cfg->num_streams <= 64) {
         tag_meta_streams(cfg);
@@ -252,8 +265,8 @@ static int oem_configure(const struct camera3_device *dev, camera3_stream_config
             camera_metadata_t *m = allocate_camera_metadata(ec + 4, dc + 64);
             if (m && (!orig || append_camera_metadata(m, orig) == 0) &&
                 add_pkg(m) == 0) {
-                if (g_last) free_camera_metadata(g_last);
-                g_last = m;
+                if (p->session_params) free_camera_metadata(p->session_params);
+                p->session_params = m;
                 cfg->session_parameters = m;
                 __android_log_print(LOG_I, TAG, "op mode 0x%x: added com.oplus.packageName=%s",
                                     cfg->operation_mode, kPkg);
@@ -270,18 +283,6 @@ static int oem_configure(const struct camera3_device *dev, camera3_stream_config
 }
 
 /* ---------------------------------------------------------------- per-session routing proxy */
-
-#define OPS_SLOTS 18   /* camera3_device_ops: 10 entry points + reserved[8] (QTI extensions) */
-typedef struct proxy {
-    camera3_device_t dev;          /* what the provider holds; dev.ops -> ops[] */
-    camera3_device_t *backend;     /* offset 136: read by the trampolines */
-    void *ops[OPS_SLOTS];
-    const void *cb;                /* camera3_callback_ops given to initialize() */
-    int is_oem, initialized;
-    char id[16];
-} proxy_t;
-_Static_assert(__builtin_offsetof(camera3_device_t, ops) == 120, "camera3_device layout");
-_Static_assert(__builtin_offsetof(proxy_t, backend) == 136, "proxy layout");
 
 /* Forward slot i to the current backend with the backend as the device argument; every argument
  * register and the stack are left untouched. A slot the backend leaves NULL returns -ENOSYS. */
@@ -315,15 +316,20 @@ static const void *g_cb_state = (const void *)1; /* unknown until first set */
 /* The OnePlus layer registers callbacks in Qualcomm's HAL at load time. Keep them registered
  * while any OnePlus-layer device is open (or nothing is open), clear them while only directly
  * opened devices exist, as on LineageOS without the module. */
+static int g_cb_lock;
 static void update_oplus_callbacks(void) {
     if (!g_set_oplus_cb || !g_oplus_cb) return;
+    while (__atomic_exchange_n(&g_cb_lock, 1, __ATOMIC_ACQUIRE)) __asm__ volatile("yield");
     const void *want = (__atomic_load_n(&g_open_oem, __ATOMIC_SEQ_CST) > 0 ||
                         __atomic_load_n(&g_open_direct, __ATOMIC_SEQ_CST) == 0) ? g_oplus_cb : 0;
-    if (want != g_cb_state) {
+    int changed = want != g_cb_state;
+    if (changed) {
         g_set_oplus_cb(want);
         g_cb_state = want;
-        __android_log_print(LOG_I, TAG, "OnePlus HAL callbacks %s", want ? "registered" : "cleared");
     }
+    __atomic_store_n(&g_cb_lock, 0, __ATOMIC_RELEASE);
+    if (changed)
+        __android_log_print(LOG_I, TAG, "OnePlus HAL callbacks %s", want ? "registered" : "cleared");
 }
 
 static int routing_enabled(void) {
@@ -404,13 +410,13 @@ static int proxy_configure(const struct camera3_device *dev, camera3_stream_conf
         if (r) return r;
     }
     if (!p->backend) return -19;
-    return p->is_oem ? oem_configure(p->backend, cfg)
-                     : p->backend->ops->configure_streams(p->backend, cfg);
+    return p->is_oem ? oem_configure(p, cfg) : p->backend->ops->configure_streams(p->backend, cfg);
 }
 
 static int proxy_close(struct hw_device_t *d) {
     proxy_t *p = (proxy_t *)d;
     close_backend(p);
+    if (p->session_params) free_camera_metadata(p->session_params);
     free(p);
     return 0;
 }

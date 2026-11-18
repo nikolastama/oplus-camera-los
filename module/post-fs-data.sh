@@ -2,30 +2,9 @@
 # OnePlus Camera for LineageOS - early boot. Only creates/labels paths this module owns.
 MODDIR=${0%/*}
 
-# meta-overlayfs (and other metamodules) mount a copy of each module's files kept in their own
-# image, not the module folder itself. On some versions a module update only adds files to that
-# copy, so files an older version of this module shipped (its old /vendor files) stayed mounted.
-# Remove from our own copy anything the current module doesn't ship. Only touches
-# <metamodule mnt>/oplus_camera_los/system.
-prune_mirror() {  # <current module dir>
-  [ -d "$1/system" ] || return 0
-  for root in /data/adb/metamodule/mnt /data/adb/modules/meta-overlayfs/mnt /data/adb/modules/meta-mountify/mnt; do
-    B="$root/oplus_camera_los"
-    [ -d "$B" ] || continue
-    [ "$(readlink -f "$B")" = "$(readlink -f "$1")" ] && continue
-    # the metamodule keeps partitions at the top level (B/vendor, B/odm, ...) as well as B/system
-    for top in system vendor odm product system_ext oem vendor_dlkm odm_dlkm; do
-      T="$B/$top"
-      [ -d "$T" ] && [ ! -L "$T" ] || continue
-      if [ "$top" = system ]; then S="$1/system"; else S="$1/system/$top"; fi
-      if [ ! -d "$S" ]; then rm -rf "$T"; continue; fi
-      (cd "$T" && find . -mindepth 1 -depth 2>/dev/null) | while read -r p; do
-        p=${p#./}
-        [ -e "$S/$p" ] || [ -L "$S/$p" ] || rm -rf "$T/$p"
-      done
-    done
-  done
-}
+. "$MODDIR/common.sh"
+
+# Clear files of older versions out of the metamodule's copy of this module.
 prune_mirror "$MODDIR"
 
 # Data dirs the OnePlus camera/APS expect. Each is created only if absent and recorded in the
@@ -36,7 +15,7 @@ for spec in /data/system/camera_rus:1047:oplus_camera_rus_file \
             /data/vendor/camera_process:1006:vendor_camera_data_file \
             /data/vendor/camera_rus:1006:vendor_camera_data_file; do
   d=${spec%%:*}; rest=${spec#*:}; owner=${rest%%:*}; ctx=${rest#*:}
-  m="$MODDIR/.created/$(echo "$d" | tr / _)"
+  m="$MODDIR/.created/$(marker "$d")"
   if [ ! -e "$d" ]; then
     mkdir -p "$MODDIR/.created" && mkdir "$d" && touch "$m"
   fi
@@ -56,12 +35,12 @@ fi
 
 # LineageOS creates /data/vendor/cam_alog, /data/vendor/camera_process and camera_remote_dump itself but leaves them
 # vendor_data_file, which the camera app may not write (OxygenOS/Infinity X label them
-# vendor_camera_data_file). Relabel those two, saving the original label first in the module's
+# vendor_camera_data_file). Relabel those three, saving the original label first in the module's
 # .relabeled list; uninstall.sh puts the saved label back.
 for d in /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_remote_dump; do
   [ -d "$d" ] || continue
-  m="$MODDIR/.created/$(echo "$d" | tr / _)"; [ -f "$m" ] && continue
-  r="$MODDIR/.relabeled/$(echo "$d" | tr / _)"
+  m="$MODDIR/.created/$(marker "$d")"; [ -f "$m" ] && continue
+  r="$MODDIR/.relabeled/$(marker "$d")"
   if [ ! -f "$r" ]; then
     orig=$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')
     case "$orig" in u:object_r:*:s0) mkdir -p "$MODDIR/.relabeled" && echo "$d $orig" > "$r" ;; *) continue ;; esac

@@ -3,7 +3,10 @@
 
     python3 tools/build_module.py --dump <dump root> --out out/ \
         --apktool apktool.jar --signer uber-apk-signer.jar \
-        --keystore keys/oplus-camera-module.jks --ks-alias opluscam --ks-pass <pw>
+        --keystore keys/oplus-camera-module.jks --ks-alias opluscam
+
+The keystore password is read from the environment variable OPLUS_CAMERA_KS_PASS (or --ks-pass,
+which leaves it in your shell history).
 
 <dump root> holds the extracted partitions (my_product/, odm/, system_ext/, ...). Both layouts
 are accepted: <root>/my_product/app/... and the dumper's <root>/my_product/my_product/app/....
@@ -24,6 +27,7 @@ Every change can be left out for testing or reverting (see docs/REVERTING.md):
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -45,6 +49,7 @@ APP_PATCHES = [
     P.camera_defer_ufs_probe,
     P.camera_gallery_fallback,
     P.camera_disable_oem_components,
+    P.restrict_exported_components,
     P.camera_scoped_props,
     P.camera_drop_embedded_libs,
 ]
@@ -112,6 +117,16 @@ def binpatch(path, spec, skip=()):
         print(f'  ! {spec["dst"]}: result differs from the tested build (expected for new firmware)')
 
 
+def write_zip(root, path):
+    """Zip <root>'s files in a fixed order with fixed timestamps, so the same inputs always give
+    the same zip (KernelSU sets the permissions itself, so none are stored)."""
+    with zipfile.ZipFile(path, 'w') as zf:
+        for p in sorted(p for p in root.rglob('*') if p.is_file()):
+            info = zipfile.ZipInfo(p.relative_to(root).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            zf.writestr(info, p.read_bytes(), zipfile.ZIP_DEFLATED, compresslevel=9)
+
+
 def apktool_patch(args, src_file, workdir, fns, out_file):
     run('java', '-jar', args.apktool, 'd', '-f', '-o', workdir, src_file)
     for f in fns:
@@ -133,7 +148,7 @@ def main():
     ap.add_argument('--signer', help='uber-apk-signer jar')
     ap.add_argument('--keystore')
     ap.add_argument('--ks-alias', default='opluscam')
-    ap.add_argument('--ks-pass')
+    ap.add_argument('--ks-pass', default=os.environ.get('OPLUS_CAMERA_KS_PASS'), help=argparse.SUPPRESS)
     args = ap.parse_args()
     edits = [e['id'] for s in json.loads((HERE / 'binpatches.json').read_text()) for e in s['edits']]
     if args.list_patches:
@@ -144,11 +159,13 @@ def main():
         print('native:   apsclient_force_java_heif', ' '.join(edits))
         print('components disabled:', ' '.join(P.OEM_ONLY_COMPONENTS))
         return
-    for need in ('dump', 'apktool', 'signer', 'keystore', 'ks_pass'):
+    for need in ('dump', 'apktool', 'signer', 'keystore'):
         if not getattr(args, need):
             ap.error(f'--{need.replace("_", "-")} is required')
+    if not args.ks_pass:
+        ap.error('set the keystore password in OPLUS_CAMERA_KS_PASS')
     known = (
-        {f.__name__ for f in APP_PATCHES + SDK_PATCHES + STUBS_PATCHES}
+        {f.__name__ for f in APP_PATCHES + SDK_PATCHES + ADAPTER_PATCHES + STUBS_PATCHES}
         | {'apsclient_force_java_heif'}
         | set(edits)
     )
@@ -162,7 +179,9 @@ def main():
         P.OEM_ONLY_COMPONENTS.remove(c)
     dump, out = args.dump.resolve(), args.out.resolve()
     work, mod = out / 'work', out / 'module'
-    shutil.rmtree(out, ignore_errors=True)
+    # only ever delete what an earlier build put there, never the --out folder itself
+    for old in (work, mod):
+        shutil.rmtree(old, ignore_errors=True)
     work.mkdir(parents=True)
     shutil.copytree(REPO / 'module', mod)
     shutil.copytree(REPO / 'overlay', mod / 'system', dirs_exist_ok=True)
@@ -255,10 +274,7 @@ def main():
         if line.startswith('version=')
     )
     z = out / f'oplus-camera-los-{ver}.zip'
-    with zipfile.ZipFile(z, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        for p in sorted(mod.rglob('*')):
-            if p.is_file():
-                zf.write(p, p.relative_to(mod))
+    write_zip(mod, z)
     print(f'done: {z} ({len(files)} files)')
 
 

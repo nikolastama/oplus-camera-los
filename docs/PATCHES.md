@@ -19,6 +19,7 @@ Applied in this order by `build_module.py` to an apktool decode of the stock APK
 | `camera_defer_ufs_probe` | Deferred capture reads `/proc/devinfo/ufs` (EACCES on LineageOS → crash) to blacklist one UFS part → treat it as absent. |
 | `camera_gallery_fallback` | No OnePlus Gallery → the thumbnail opens `ACTION_VIEW`, but waits (≤ 8 s) for the final deferred image so the gallery doesn't cache the quick JPEG. Adds `tools/smali/LosGalleryFallback*.smali` and hooks `GalleryHelper.p()` and the defer-save handler in `CameraManager`. |
 | `camera_disable_oem_components` | Disables receivers and services that only answer OnePlus system broadcasts or OnePlus apps: HeyTap accessory, SAU tuning download, backup plugin, debug receiver, Gallery connection and multi-device remote services. All exported; nothing in the app calls them. |
+| `restrict_exported_components` | The components `strip_oem_component_permissions` leaves open and the camera only uses itself (`EponaProvider`, four more providers, two services; `INTERNAL_COMPONENTS`) become `android:exported="false"`, so other apps can't reach them. The camera's own processes keep access. |
 | `camera_scoped_props` | Two helpers read `persist.sys.oplus.anim_level` by reflection on `android.os.SystemProperties` → `LosProps` (props stay in-process). |
 | `camera_drop_embedded_libs` | The app runs as a preinstalled system app and loads native code from `priv-app/OplusCamera/lib/arm64` → drop the unused copies inside the APK (−46 MB). |
 
@@ -46,7 +47,7 @@ Each edit lists its offset, original bytes, new bytes and reason. The build veri
 | `libsensorbridg2.so` (from `libsensorbridge.so`) | SONAME rename. |
 
 ### Wrapper: `prebuilt/camera.oemlayer.wrap.so`
-Our own code (`tools/oemwrap/oemwrap.c`). It exposes a copy of the real layer's HAL module with `open` replaced, and redirects each device's `configure_streams` for OnePlus operation modes: it adds the session package tag, sets the picture-metadata stream's use case, and caps video-encoder streams at 40 buffers (ARCHITECTURE.md). `tools/oemwrap/build.sh` rebuilds it with clang + lld; no NDK needed.
+Our own code (`tools/oemwrap/oemwrap.c`). It exposes a copy of the real layer's HAL module with `open` replaced, and redirects each device's `configure_streams` for OnePlus operation modes: it adds the session package tag, sets the picture-metadata stream's use case, and caps video-encoder streams at 40 buffers (ARCHITECTURE.md). The tagged session parameters are a per-device copy, freed on that device's next configure or close, and the HAL callback registration shared by all devices changes under a lock. `tools/oemwrap/build.sh` rebuilds it with clang + lld; no NDK needed. With clang/lld 18.1.3 the result matches the committed file byte for byte (`tests/test_build.py`).
 
 ## Install-time fixes (`module/customize.sh`, `fixlib`)
 

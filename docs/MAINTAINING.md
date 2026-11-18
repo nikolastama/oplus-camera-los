@@ -31,8 +31,9 @@ Most problems show up at build or install time, because every patch checks what 
    Add new libraries to `tools/selection.json` (firmware path → module path; app-side libraries go to `system_ext/lib64`).
 4. **Permissions:** compare the new manifest's `uses-permission` list with `overlay/system_ext/etc/permissions/privapp-permissions-com.oplus.camera.xml`. A missing privileged permission stops boot (privapp enforcement), and the installer can't catch that.
 5. **Diffs**: run `python3 tools/make_diffs.py --dump … --apktool …` and commit `diffs/` together with any patch change, so every modification stays reviewable and reversible. Add new changes to docs/REVERTING.md.
-6. **Version**: bump `version`/`versionCode` in `module/module.prop` (the OxygenOS build in brackets).
-7. Test with the checklist below.
+6. **Checks**: `python3 -m unittest discover -s tests` must pass (it replays every recorded diff).
+7. **Version**: bump `version`/`versionCode` in `module/module.prop` (the OxygenOS build in brackets).
+8. Test with the checklist below.
 
 ## B. New LineageOS build / new vendor blobs
 

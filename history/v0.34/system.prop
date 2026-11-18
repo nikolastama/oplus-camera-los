@@ -1,0 +1,6 @@
+# The only property this module sets system-wide. The camera HAL and cameraserver size the
+# capture-result queue from it. OnePlus results are 0.5-1.2 MB; with the default (1 MB) large
+# results fall back to binder (~1 MB cap) and get corrupted (portrait crash). A bigger queue
+# only costs a little memory per open camera and changes nothing else for other apps.
+# The OnePlus camera's own props are answered inside its process (tools/gen_losprops.py).
+ro.vendor.camera.res.fmq.size=8388608

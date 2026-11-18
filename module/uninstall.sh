@@ -2,7 +2,7 @@
 # Runs once, early in the first boot after the module is removed (before PackageManager starts).
 # Goal: the system ends up exactly as it was before installation. Your photos/videos are kept.
 MODDIR=${0%/*}
-PKG=com.oplus.camera
+. "$MODDIR/common.sh"
 C=/data/adb/oplus_camera_cleanup
 
 APPUID=$(awk -v p=$PKG '$1==p {print $2}' /data/system/packages.list 2>/dev/null)
@@ -31,12 +31,12 @@ for r in "$MODDIR"/.relabeled/*; do
 done
 # 2) directories this module created (recorded in .created; LineageOS's own are never touched)
 for d in /data/system/camera_rus /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_rus; do
-  [ -f "$MODDIR/.created/$(echo "$d" | tr / _)" ] && rm -rf "$d"
+  [ -f "$MODDIR/.created/$(marker "$d")" ] && rm -rf "$d"
 done
 
 # 2a) this module's copy inside the metamodule image (normally removed by the metamodule too)
-for root in /data/adb/metamodule/mnt /data/adb/modules/meta-overlayfs/mnt /data/adb/modules/meta-mountify/mnt; do
-  [ -d "$root/oplus_camera_los" ] && [ "$(readlink -f "$root/oplus_camera_los")" != "$(readlink -f "$MODDIR")" ] && rm -rf "$root/oplus_camera_los"
+for root in $METAMODULE_MNTS; do
+  [ -d "$root/$MODID" ] && [ "$(readlink -f "$root/$MODID")" != "$(readlink -f "$MODDIR")" ] && rm -rf "$root/$MODID"
 done
 
 # 3) crash reports that mention the camera

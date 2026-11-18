@@ -7,8 +7,22 @@ is missing, so a different camera build can never be patched silently.
 """
 
 import re
+import shutil
 from hashlib import sha256
 from pathlib import Path
+
+
+def _read(path):
+    # surrogateescape round-trips any byte apktool writes, so a file is never changed by accident
+    return Path(path).read_text(encoding='utf-8', errors='surrogateescape')
+
+
+def _write(path, text):
+    Path(path).write_text(text, encoding='utf-8', errors='surrogateescape')
+
+
+def _smali(root):
+    return Path(root).glob('smali*/**/*.smali')
 
 
 def _replace_method(data, signature, body):
@@ -18,7 +32,7 @@ def _replace_method(data, signature, body):
 
 def _find(root, glob, anchor):
     for p in Path(root).glob(glob):
-        t = p.read_text(encoding='utf-8', errors='ignore')
+        t = _read(p)
         if anchor in t:
             return p, t
     raise ValueError(f'anchor not found: {anchor!r}')
@@ -30,15 +44,15 @@ def _find(root, glob, anchor):
 def camera_font(root):
     """TypeFaceUtil reads OEM font framework state absent on LineageOS -> Typeface.DEFAULT."""
     sig = 'public static a(Landroid/content/Context;)Landroid/graphics/Typeface;'
-    for p in Path(root).glob('smali*/**/*.smali'):
-        t = p.read_text(encoding='utf-8', errors='ignore')
+    for p in _smali(root):
+        t = _read(p)
         if '"TypeFaceUtil"' in t and f'.method {sig}' in t:
             new = _replace_method(
                 t,
                 sig,
                 '    .locals 1\n\n    sget-object v0, Landroid/graphics/Typeface;->DEFAULT:Landroid/graphics/Typeface;\n\n    return-object v0\n',
             )
-            p.write_text(new, encoding='utf-8')
+            _write(p, new)
             return str(p)
     raise ValueError('TypeFaceUtil.a(Context) not found')
 
@@ -71,7 +85,7 @@ def camera_blur_seginit_guard(root):
     )
     if n != 1:
         raise ValueError('blur init segInit not patched')
-    p.write_text(t2, encoding='utf-8')
+    _write(p, t2)
 
     p2, t = _find(root, 'smali*/**/*.smali', 'initSegForSizeChange, segInit, cost: ')
     pat = (
@@ -89,7 +103,7 @@ def camera_blur_seginit_guard(root):
     )
     if n != 1:
         raise ValueError('blur size-change segInit not patched')
-    p2.write_text(t2, encoding='utf-8')
+    _write(p2, t2)
     return f'{p}, {p2}'
 
 
@@ -100,12 +114,12 @@ def camera_uifirst(root):
         re.M,
     )
     hits = []
-    for p in Path(root).glob('smali*/**/*.smali'):
-        t = p.read_text(encoding='utf-8', errors='ignore')
+    for p in _smali(root):
+        t = _read(p)
         if 'setUxThreadValue' in t:
             t2, n = call.subn('    nop\n', t)
             if n:
-                p.write_text(t2, encoding='utf-8')
+                _write(p, t2)
                 hits.append(f'{p.name}x{n}')
     if not hits:
         raise ValueError('setUxThreadValue call sites not found')
@@ -115,11 +129,11 @@ def camera_uifirst(root):
 def strip_oem_component_permissions(root):
     """Undefined OEM permissions would lock the launcher and other apps out of camera components."""
     m = Path(root) / 'AndroidManifest.xml'
-    t = m.read_text(encoding='utf-8')
+    t = _read(m)
     t2, n = re.subn(
         r'\s+android:permission="(?:oplus|oppo|com\.oplus\.permission|com\.oppo|com\.heytap)[^"]*"', '', t
     )
-    m.write_text(t2, encoding='utf-8')
+    _write(m, t2)
     return f'{n} attributes'
 
 
@@ -140,8 +154,8 @@ VENDOR_TAG_ALIASES = {
 
 def vendor_tag_aliases(root):
     total = 0
-    for p in Path(root).glob('smali*/**/*.smali'):
-        t = p.read_text(encoding='utf-8', errors='ignore')
+    for p in _smali(root):
+        t = _read(p)
         if 'com.oplus.' not in t:
             continue
         t2 = t
@@ -151,7 +165,7 @@ def vendor_tag_aliases(root):
             )
             total += n
         if t2 != t:
-            p.write_text(t2, encoding='utf-8')
+            _write(p, t2)
     return f'{total} strings'
 
 
@@ -175,13 +189,13 @@ SDK_STATIC_DEFAULTS = (
 
 def sdk_runtime(root):
     n = 0
-    for p in Path(root).glob('smali*/**/*.smali'):
-        t = p.read_text(encoding='utf-8', errors='ignore')
+    for p in _smali(root):
+        t = _read(p)
         t2 = t
         for line in SDK_STATIC_DEFAULTS:
             t2 = t2.replace(line + '\n', line.rsplit(' = ', 1)[0] + '\n')
         if t2 != t:
-            p.write_text(t2, encoding='utf-8')
+            _write(p, t2)
             n += 1
     p, t = _find(
         root,
@@ -191,7 +205,7 @@ def sdk_runtime(root):
     t = _replace_method(
         t, 'public isSensorModeNeedWait(II)Z', '    .locals 1\n\n    const/4 v0, 0x0\n\n    return v0\n'
     )
-    p.write_text(t, encoding='utf-8')
+    _write(p, t)
     return f'{n} static-default files, isSensorModeNeedWait -> false'
 
 
@@ -201,7 +215,7 @@ def sdk_facebeauty_path(root):
         '/system_ext/lib64/libApsFaceBeautyPreviewProductJni.so',
     )
     p, t = _find(root, 'smali*/**/*.smali', old)
-    p.write_text(t.replace(old, new), encoding='utf-8')
+    _write(p, t.replace(old, new))
     return str(p.name)
 
 
@@ -248,7 +262,7 @@ def camera_blur_license_path(root):
     )
     if t2 == t or n != 1:
         raise ValueError('blur license path not patched')
-    p.write_text(t2, encoding='utf-8')
+    _write(p, t2)
     return p.name
 
 
@@ -264,7 +278,7 @@ def camera_defer_ufs_probe(root):
     t2, n = pat.subn(lambda m: m.group(1) + 'goto ' + m.group(2), t, count=1)
     if n != 1:
         raise ValueError('ufs probe not patched')
-    p.write_text(t2, encoding='utf-8')
+    _write(p, t2)
     return p.name
 
 
@@ -318,7 +332,7 @@ def sdk_session_package_tag(root):
     return-void
 .end method
 '''
-    p.write_text(t, encoding='utf-8')
+    _write(p, t)
     return p.name
 
 
@@ -354,9 +368,9 @@ def camera_gallery_fallback(root):
             )
             + t[j + len('return v12') :]
         )
-        gh.write_text(t, encoding='utf-8')
+        _write(gh, t)
     for f in ('LosGalleryFallback.smali', 'LosGalleryFallback$Fire.smali'):
-        (gh.parent / f).write_text((SMALI_DIR / f).read_text(encoding='utf-8'), encoding='utf-8')
+        _write(gh.parent / f, _read(SMALI_DIR / f))
     cm, t = _find(
         root,
         'smali*/com/oplus/camera/CameraManager.smali',
@@ -376,7 +390,7 @@ def camera_gallery_fallback(root):
             + '\n    invoke-static {v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->onFinalSaved(Landroid/net/Uri;)V\n'
             + t[k:]
         )
-        cm.write_text(t, encoding='utf-8')
+        _write(cm, t)
     return gh.name
 
 
@@ -400,7 +414,7 @@ OEM_ONLY_COMPONENTS = [
 def camera_disable_oem_components(root):
     """Disable exported receivers/services that only answer OnePlus/HeyTap system broadcasts."""
     p = Path(root) / 'AndroidManifest.xml'
-    t = p.read_text(encoding='utf-8')
+    t = _read(p)
     for n in OEM_ONLY_COMPONENTS:
         m = re.search(r'<(receiver|service)([^>]*?)android:name="' + re.escape(n) + '"', t)
         if not m:
@@ -412,34 +426,47 @@ def camera_disable_oem_components(root):
             '<' + m.group(1), '<' + m.group(1) + ' android:enabled="false"', 1
         )
         t = t.replace(tag, new, 1)
-    p.write_text(t, encoding='utf-8')
+    _write(p, t)
     return p.name
 
 
-# ---------------------------------------------------------------- native blobs (bytes, by pattern)
+# Components the OnePlus camera only uses from its own processes, or that only OxygenOS system
+# apps call. strip_oem_component_permissions removes their OnePlus-only permission guards (the
+# permissions don't exist on LineageOS); without a guard any app could reach them, so they are
+# made private to the camera instead. The camera's own processes share its UID and keep access.
+INTERNAL_COMPONENTS = [
+    'com.oplus.epona.internal.EponaProvider',  # OPPO's inter-app call bridge
+    'com.oplus.camera.component.CameraInfoProvider',
+    'com.oplus.camera.setting.AiCameraVisibleProvider',
+    'com.oplus.camera.feature.aicloudhd.provider.AiCloudHdProvider',
+    'com.oplus.camera.feature.basic.fluid.FluidCardWidgetProvider',
+    'com.oplus.camera.feature.keymagic.KeyMagicService',
+    'com.oplus.camera.bluetooth.BlueToothScanService',
+]
 
 
-def _patch_bytes(path, orig, new, label):
-    d = bytearray(Path(path).read_bytes())
-    o, n = bytes.fromhex(orig), bytes.fromhex(new)
-    if d.count(n) == 1 and d.count(o) == 0:
-        return 'already'
-    if d.count(o) != 1:
-        raise ValueError(f'{label}: pattern found {d.count(o)} times')
-    i = d.index(o)
-    d[i : i + len(o)] = n
-    Path(path).write_bytes(d)
-    return hex(i)
-
-
-def oemlayer_follow_app_zoom(path):
-    """camera.oemlayer.v2.so (OemLayer::ZoomDivisionV2::Initialize): the layer copies a SAT config
-    flag that makes it ignore ANDROID_CONTROL_ZOOM_RATIO and wait for com.oplus.zoom.target /
-    zoom.active, which the app doesn't send on LineageOS -> no viewfinder zoom. Force the flag to 0.
-    ldr x9,[x8,#0x320]; ldr w9,[x9,#0x11c] -> mov w9,wzr; str w9,[x8,#0xf4]; str wzr,[x8,#0xf8]"""
-    return _patch_bytes(
-        path, '099141f9291d41b909f500b91ff900b9', '099141f9e9031f2a09f500b91ff900b9', 'oemlayer zoom'
-    )
+def restrict_exported_components(root):
+    """Make the components in INTERNAL_COMPONENTS android:exported="false"."""
+    p = Path(root) / 'AndroidManifest.xml'
+    t = _read(p)
+    for n in INTERNAL_COMPONENTS:
+        m = re.search(
+            r'<(?:activity|provider|receiver|service)\b[^>]*?android:name="' + re.escape(n) + r'"[^>]*>', t
+        )
+        if not m:
+            raise ValueError('component missing: ' + n)
+        tag = m.group(0)
+        if 'android:exported="false"' in tag:
+            continue
+        if 'android:exported="true"' not in tag:
+            raise ValueError('component not exported as expected: ' + n)
+        t = (
+            t[: m.start()]
+            + tag.replace('android:exported="true"', 'android:exported="false"', 1)
+            + t[m.end() :]
+        )
+    _write(p, t)
+    return f'{len(INTERNAL_COMPONENTS)} components'
 
 
 # Install-time patches of ROM blobs (offlinecamera-service-impl, libAlgoProcess) live in
@@ -450,8 +477,6 @@ def camera_drop_embedded_libs(root):
     """The module installs the app as a preinstalled system app, which loads native code from
     priv-app/OplusCamera/lib/arm64 (shipped next to the APK). The copies inside the APK (lib/) are
     never used; dropping them saves ~46 MB. Keep lib/arm64 in the module in sync with the APK's libs."""
-    import shutil
-
     d = Path(root) / 'lib'
     if d.exists():
         shutil.rmtree(d)
@@ -478,18 +503,18 @@ def stubs_scoped_props(root):
     root = Path(root)
     dst = root / 'smali/com/oplus/camera/los'
     dst.mkdir(parents=True, exist_ok=True)
-    (dst / 'LosProps.smali').write_text((SMALI_STUBS_DIR / 'LosProps.smali').read_text())
+    _write(dst / 'LosProps.smali', _read(SMALI_STUBS_DIR / 'LosProps.smali'))
     n = 0
-    for f in root.glob('smali*/**/*.smali'):
+    for f in _smali(root):
         if f.name == 'LosProps.smali':
             continue
-        t = f.read_text(encoding='utf-8')
+        t = _read(f)
         u = t
         for m in _SP_METHODS:
             u = u.replace('Landroid/os/SystemProperties;->' + m, 'Lcom/oplus/camera/los/LosProps;->' + m)
         if u != t:
             n += 1
-            f.write_text(u, encoding='utf-8')
+            _write(f, u)
     if not n:
         raise ValueError('no SystemProperties reads found in the stubs jar')
     return f'{n} classes'
@@ -500,8 +525,8 @@ def camera_scoped_props(root):
     android.os.SystemProperties.get(String); point them at LosProps (the app's other reads already
     go through com.oplus.wrapper.os.SystemProperties in the stubs jar)."""
     done = 0
-    for f in Path(root).glob('smali*/**/*.smali'):
-        t = f.read_text(encoding='utf-8')
+    for f in _smali(root):
+        t = _read(f)
         if '"persist.sys.oplus.anim_level"' not in t and 'Ld3/a;' not in t:
             continue
         if f.as_posix().endswith(('/s3/i.smali', '/d3/a.smali')) and '"android.os.SystemProperties"' in t:
@@ -509,7 +534,7 @@ def camera_scoped_props(root):
                 'const-string v1, "android.os.SystemProperties"',
                 'const-string v1, "com.oplus.camera.los.LosProps"',
             )
-            f.write_text(t, encoding='utf-8')
+            _write(f, t)
             done += 1
     if done != 2:
         raise ValueError(f'expected 2 reflective SystemProperties reads, patched {done}')

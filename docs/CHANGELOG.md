@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.34 (clean-up)
+- Wrapper: the session parameters with the package tag were one buffer shared by every camera, so two cameras configuring at the same time could free each other's. Each device now keeps its own copy (freed on its next configure or on close), and the HAL callback registration shared by all devices changes under a lock.
+- Scripts: module paths and the metamodule clean-up live in one shared `common.sh` instead of three copies.
+- Security: the seven components the camera only uses itself (`EponaProvider` and six more) are no longer reachable by other apps (`restrict_exported_components`, SECURITY.md). The release APK has these seven values changed in its compiled manifest and is signed again with the module key (same certificate: it updates in place, settings are kept).
+- Build: `--out` no longer deletes the whole folder it's given, the keystore password comes from `OPLUS_CAMERA_KS_PASS` instead of the command line, and the zip is reproducible (fixed timestamps and order).
+- Build: patches read and write files byte for byte (bytes that aren't valid UTF-8 were silently dropped before); an unused zoom patch superseded by `binpatches.json` is removed.
+- Repository: `tests/` (patches replayed against `diffs/`, shell helpers, wrapper rebuilt byte for byte), a GitHub check on every push, and `.gitattributes` so a Windows checkout can't break the scripts with CRLF line endings.
+
 ## v0.33 (debug bundle)
 - Debug bundle: the camera's own processing logs (`cam_alog`) were left out whenever the newest file was over 40 MB, which debug logging reaches within a minute. The newest part of the file is now included.
 - Debug bundle: the Action button's first press also sets 16 MB log buffers (until reboot), so the whole test session is kept instead of the last ~15 seconds.

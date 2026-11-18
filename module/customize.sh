@@ -1,6 +1,6 @@
 # OnePlus Camera for LineageOS - install-time checks and pre-install snapshots
 SKIPUNZIP=0
-PKG=com.oplus.camera
+. "$MODPATH/common.sh"
 
 ui_print "- OnePlus Camera for LineageOS (OnePlus 15)"
 # Read identity from the ROM's build.prop files, not runtime props: Play Integrity / prop-spoofing
@@ -38,8 +38,10 @@ drop_layer() {
 rom_has() {
   [ -e "$1" ] || return 1
   rel=${1#/vendor/}
-  for m in /data/adb/modules/*/ /data/adb/metamodule/mnt/*/ /data/adb/modules/meta-overlayfs/mnt/*/; do
-    { [ -e "${m}system/vendor/$rel" ] || [ -e "${m}vendor/$rel" ]; } && return 1
+  for root in $MODULES $METAMODULE_MNTS; do
+    for m in "$root"/*/; do
+      { [ -e "${m}system/vendor/$rel" ] || [ -e "${m}vendor/$rel" ]; } && return 1
+    done
   done
   return 0
 }
@@ -116,7 +118,7 @@ fixlib() {  # <ROM file> <module copy> <expected offset> <original hex> <fixed h
 #    The fixed copy goes to /odm/lib64, which the camera HAL searches before /vendor/lib64 when it
 #    loads this library by name, so the ROM's /vendor copy is shadowed, not overlaid.
 OFFSRC=/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so
-[ -f "/data/adb/modules/oplus_camera_los/system/odm/lib64/${OFFSRC##*/}" ] && OFFSRC="/data/adb/modules/oplus_camera_los/system/odm/lib64/${OFFSRC##*/}"
+[ -f "$INSTALLED/system/odm/lib64/${OFFSRC##*/}" ] && OFFSRC="$INSTALLED/system/odm/lib64/${OFFSRC##*/}"
 fixlib "$OFFSRC" \
   "$MODPATH/system/odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so" 111500 \
   981a40f9e2031faa1b1f40b9000f40b9 981a40f9e2031faa1b2f40b9000f40b9 "Offline camera service"
@@ -132,14 +134,14 @@ fixlib /odm/lib64/libAlgoProcess.so "$MODPATH/system/odm/lib64/libAlgoProcess.so
   e86f40f9e93341b98b008052eae740b9ec030a2aed030a2a297d0011880e00f929691b128b320a29 "Camera processing library"
 
 # Refuse if another copy of the OnePlus camera is already installed (ROM or other module)
-if pm path $PKG >/dev/null 2>&1 && [ ! -d /data/adb/modules/oplus_camera_los ]; then
+if pm path $PKG >/dev/null 2>&1 && [ ! -d $INSTALLED ]; then
   abort "! $PKG is already installed on this system. Remove it first."
 fi
 
 # Never shadow a file the ROM ships: every file in this module must be new to the system.
 for f in $(cd "$MODPATH/system" && find . -type f | sed 's|^\./||'); do
   [ -f "$FIXED" ] && grep -q "^$f " "$FIXED" && continue   # fixed copy of the ROM's own file (above)
-  [ -e "/system/$f" ] && [ ! -d /data/adb/modules/oplus_camera_los ] && abort "! ROM already has /system/$f - refusing to overlay it."
+  [ -e "/system/$f" ] && [ ! -d $INSTALLED ] && abort "! ROM already has /system/$f - refusing to overlay it."
 done
 
 # A fresh install supersedes any cleanup still pending from an earlier removal
@@ -147,40 +149,17 @@ rm -rf /data/adb/oplus_camera_cleanup /data/adb/service.d/oplus_camera_cleanup.s
 
 # Snapshots used by uninstall to remove only what the camera added (kept inside the module dir).
 S="$MODPATH/.snapshot"; mkdir -p "$S"
-if [ ! -f /data/adb/modules/oplus_camera_los/.snapshot/persist ]; then
+if [ ! -f $INSTALLED/.snapshot/persist ]; then
   getprop | sed -n 's/^\[\(persist\.[^]]*\)\].*/\1/p' | sort > "$S/persist"
   for t in global system secure; do settings list $t 2>/dev/null | cut -d= -f1 | sort > "$S/settings_$t"; done
 else
-  cp -f /data/adb/modules/oplus_camera_los/.snapshot/* "$S/"   # module update: keep the original snapshot
+  cp -f $INSTALLED/.snapshot/* "$S/"   # module update: keep the original snapshot
 fi
 # module update: carry over the record of directories this module created
-[ -d /data/adb/modules/oplus_camera_los/.created ] && cp -rf /data/adb/modules/oplus_camera_los/.created "$MODPATH/"
-[ -d /data/adb/modules/oplus_camera_los/.relabeled ] && cp -rf /data/adb/modules/oplus_camera_los/.relabeled "$MODPATH/"
+[ -d $INSTALLED/.created ] && cp -rf $INSTALLED/.created "$MODPATH/"
+[ -d $INSTALLED/.relabeled ] && cp -rf $INSTALLED/.relabeled "$MODPATH/"
 
-# meta-overlayfs (and other metamodules) mount a copy of each module's files kept in their own
-# image, not the module folder itself. On some versions a module update only adds files to that
-# copy, so files an older version of this module shipped (its old /vendor files) stayed mounted.
-# Remove from our own copy anything the current module doesn't ship. Only touches
-# <metamodule mnt>/oplus_camera_los/system.
-prune_mirror() {  # <current module dir>
-  [ -d "$1/system" ] || return 0
-  for root in /data/adb/metamodule/mnt /data/adb/modules/meta-overlayfs/mnt /data/adb/modules/meta-mountify/mnt; do
-    B="$root/oplus_camera_los"
-    [ -d "$B" ] || continue
-    [ "$(readlink -f "$B")" = "$(readlink -f "$1")" ] && continue
-    # the metamodule keeps partitions at the top level (B/vendor, B/odm, ...) as well as B/system
-    for top in system vendor odm product system_ext oem vendor_dlkm odm_dlkm; do
-      T="$B/$top"
-      [ -d "$T" ] && [ ! -L "$T" ] || continue
-      if [ "$top" = system ]; then S="$1/system"; else S="$1/system/$top"; fi
-      if [ ! -d "$S" ]; then rm -rf "$T"; continue; fi
-      (cd "$T" && find . -mindepth 1 -depth 2>/dev/null) | while read -r p; do
-        p=${p#./}
-        [ -e "$S/$p" ] || [ -L "$S/$p" ] || rm -rf "$T/$p"
-      done
-    done
-  done
-}
+# Clear files of older versions out of the metamodule's copy of this module (common.sh).
 prune_mirror "$MODPATH"
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
