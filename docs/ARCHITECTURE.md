@@ -43,6 +43,14 @@ OnePlus's HAL decides per session whether the client is its own camera app, usin
 
 Third-party apps never get the tag, so they keep the generic pipeline.
 
+## What the wrapper does (OnePlus operation modes ≥ 0x8000 only)
+
+1. Adds the session package tag (above).
+2. Gives the app's picture-metadata surface (RAW16, consumer usage 0x40) the stream use case 0x10002, so the HAL writes each frame's metadata into it.
+3. **Caps video-encoder streams at 40 buffers.** A LineageOS video-encoder surface has no BufferQueue slot expansion, so it holds at most 64 buffers. In some video modes (1080p60, stabilisation) OnePlus's HAL asks for 64, and cameraserver also needs the encoder's own spare buffers on top. It then refused the whole session ("Unable to set buffer count", −38), leaving a black preview, followed by −22 on retries because the encoder surface was still connected. 42 is known to work at 1080p.
+
+Any other session passes straight through.
+
 ## Deferred capture
 
 `ro.oplus.camera.defercap.support=1` is mandatory: the app throws on start without it. The app first saves a quick JPEG, then the processing service (APS) replaces it with the multi-frame result, triggered when you open the thumbnail or close the camera. The gallery hand-off (`LosGalleryFallback`) waits up to 8 s for that final image before opening the photo, so other galleries don't cache the quick JPEG.

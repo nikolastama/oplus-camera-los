@@ -45,7 +45,7 @@ Each edit lists its offset, original bytes, new bytes and reason. The build veri
 | `libsensorbridg2.so` (from `libsensorbridge.so`) | SONAME rename. |
 
 ### Wrapper: `prebuilt/camera.oemlayer.wrap.so`
-Our own code (`tools/oemwrap/oemwrap.c`). It exposes a copy of the real layer's HAL module with `open` replaced, and redirects each device's `configure_streams` to add the session package tag for OnePlus operation modes. `tools/oemwrap/build.sh` rebuilds it with clang + lld; no NDK needed.
+Our own code (`tools/oemwrap/oemwrap.c`). It exposes a copy of the real layer's HAL module with `open` replaced, and redirects each device's `configure_streams` for OnePlus operation modes: it adds the session package tag, sets the picture-metadata stream's use case, and caps video-encoder streams at 40 buffers (ARCHITECTURE.md). `tools/oemwrap/build.sh` rebuilds it with clang + lld; no NDK needed.
 
 ## Install-time fixes (`module/customize.sh`, `fixlib`)
 

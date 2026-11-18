@@ -173,6 +173,15 @@ static void find_pkg_tag(void) {
 #define STREAM_W(s)        (*(const uint32_t *)((const char *)(s) + 0x04))
 #define STREAM_H(s)        (*(const uint32_t *)((const char *)(s) + 0x08))
 #define STREAM_USECASE(s)  (*(int64_t *)((char *)(s) + 0x48))
+#define STREAM_MAXBUF(s)   (*(uint32_t *)((char *)(s) + 0x14))
+#define USAGE_VIDEO_ENCODER 0x10000
+/* A video-encoder surface (GraphicBufferSource) on LineageOS has no BufferQueue slot expansion,
+ * so it holds at most 64 buffers, and cameraserver needs max_buffers + the encoder's own
+ * undequeued buffers. In some video modes (1080p60 / stabilisation) OnePlus's HAL asks for 64,
+ * which made cameraserver refuse the whole session ("Unable to set buffer count", -38): black
+ * preview, then -22 on retries because the encoder surface was left connected. 42 is known to
+ * work at 1080p; cap at 40. Fewer buffers only limits how many frames the HAL holds at once. */
+#define ENCODER_MAX_BUFFERS 40
 #define FMT_RAW16          0x20
 #define USAGE_OPLUS_META   0x40      /* SurfaceDecision: "surface_key_picture_metadata" -> 0x40 */
 #define USECASE_OPLUS_META 0x10002   /* advertised in android.scaler.availableStreamUseCases;
@@ -198,6 +207,25 @@ static void tag_meta_streams(camera3_stream_configuration_t *cfg) {
     }
 }
 
+static int configure_and_cap(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
+    uint64_t enc = 0;  /* streams the framework marked as video-encoder consumers (before the HAL
+                          ORs its own producer usage into the field) */
+    for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++)
+        if (cfg->streams[i] && (STREAM_USAGE(cfg->streams[i]) & USAGE_VIDEO_ENCODER)) enc |= 1ULL << i;
+    int r = g_real_configure(dev, cfg);
+    if (r == 0 && enc) {
+        for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++) {
+            void *st = cfg->streams[i];
+            if ((enc >> i & 1) && st && STREAM_MAXBUF(st) > ENCODER_MAX_BUFFERS) {
+                __android_log_print(LOG_I, TAG, "stream %u (%ux%u encoder): max_buffers %u -> %u", i,
+                                    STREAM_W(st), STREAM_H(st), STREAM_MAXBUF(st), ENCODER_MAX_BUFFERS);
+                STREAM_MAXBUF(st) = ENCODER_MAX_BUFFERS;
+            }
+        }
+    }
+    return r;
+}
+
 static int wrap_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
     if (cfg && cfg->operation_mode >= 0x8000 && cfg->streams && cfg->num_streams > 0 &&
         cfg->num_streams <= 64) {
@@ -218,13 +246,14 @@ static int wrap_configure(const struct camera3_device *dev, camera3_stream_confi
                 cfg->session_parameters = m;
                 __android_log_print(LOG_I, TAG, "op mode 0x%x: added com.oplus.packageName=%s",
                                     cfg->operation_mode, kPkg);
-                int r = g_real_configure(dev, cfg);
+                int r = configure_and_cap(dev, cfg);
                 cfg->session_parameters = orig;
                 return r;
             }
             if (m) free_camera_metadata(m);
             __android_log_print(LOG_E, TAG, "could not add package tag, passing through");
         }
+        return configure_and_cap(dev, cfg);
     }
     return g_real_configure(dev, cfg);
 }

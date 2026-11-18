@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.31
+- Video: switching resolution or frame rate could leave a black preview. OnePlus's HAL asked for 64 buffers on the video-encoder stream (1080p60 / stabilisation), more than a LineageOS encoder surface can hold with cameraserver's extra buffers, so the session was refused (−38, then −22 on retries). The wrapper caps encoder streams at 40 buffers.
+- The wrapper is now built from `tools/oemwrap/build.sh` (same imports and behaviour, plus the cap).
+
 ## v0.30
 - Debloat: the unused native-library copies inside the APK are dropped (APK 180 → 134 MB, zip 109 → 93 MB). OnePlus Gallery connection and multi-device remote services disabled.
 - Removal also deletes the Action button's debug bundles from Download.

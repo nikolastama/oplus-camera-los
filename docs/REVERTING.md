@@ -83,6 +83,8 @@ Disabling only stops the system from starting them. The app's own code still run
 
 The module ships the two renamed libraries **as private copies** because LineageOS's `libsensorbridge.so` and `camera.oemlayer.uilayer.so` are different, incompatible builds. Reverting the renames means the layer links against LineageOS's versions.
 
+**Wrapper behaviour** (`tools/oemwrap/oemwrap.c`): to drop the encoder buffer cap, set `ENCODER_MAX_BUFFERS` to 64 (or remove the call in `configure_and_cap`) and rebuild with `tools/oemwrap/build.sh`. The package tag and the metadata-stream use case are separate functions (`wrap_configure`, `tag_meta_streams`).
+
 **Wrapper** (`prebuilt/camera.oemlayer.wrap.so` at `/odm/lib64/hw/camera.oemlayer.v2.so`): to go without it, ship the real layer at the hw path instead and skip `uilayer-dlopen-real-layer`. Photos then depend only on the SDK's session tag.
 
 ## 4. Install-time fixes of ROM files (`module/customize.sh`)
