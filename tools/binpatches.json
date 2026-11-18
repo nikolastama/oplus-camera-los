@@ -6,24 +6,28 @@
   "dst_sha256": "e5fe095574c2136f95f8fb5e46255ec4382bdcff71b00d037bb22a741ce98502",
   "edits": [
    {
+    "id": "layer-needed-sensorbridg2",
     "offset": 259407,
     "orig": "65",
     "new": "32",
     "why": "DT_NEEDED libsensorbridge.so -> libsensorbridg2.so (private copy; LineageOS ships an incompatible libsensorbridge)"
    },
    {
+    "id": "layer-needed-charger-v9",
     "offset": 259443,
     "orig": "38",
     "new": "39",
     "why": "DT_NEEDED vendor.oplus.hardware.charger-V8-ndk.so -> V9 (LineageOS ships V9 only)"
    },
    {
+    "id": "layer-needed-uilaye2",
     "offset": 259776,
     "orig": "72",
     "new": "32",
     "why": "DT_NEEDED camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so (private copy)"
    },
    {
+    "id": "layer-zoom-follow-app",
     "offset": 3538472,
     "orig": "291d41b9",
     "new": "e9031f2a",
@@ -38,24 +42,28 @@
   "dst_sha256": "0a4854dfcc92ac6eee94ad536d381fcb5c0925c52e278b2a076121b661b2e01f",
   "edits": [
    {
+    "id": "uilayer-needed-charger-v9",
     "offset": 18408,
     "orig": "38",
     "new": "39",
     "why": "DT_NEEDED charger-V8-ndk -> V9"
    },
    {
+    "id": "uilayer-soname",
     "offset": 18690,
     "orig": "72",
     "new": "32",
     "why": "DT_SONAME camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so"
    },
    {
+    "id": "uilayer-dlopen-real-layer",
     "offset": 29157,
     "orig": "2f6f646d2f6c696236342f68772f63616d6572612e6f656d6c617965722e76322e736f",
     "new": "63616d6572612e6f656d6c617965722e76322e736f0000000000000000000000000000",
     "why": "dlopen path \"/odm/lib64/hw/camera.oemlayer.v2.so\" -> \"camera.oemlayer.v2.so\" (hw/ path is the wrapper; the real layer is found by name in /odm/lib64)"
    },
    {
+    "id": "uilayer-packagename-fallback",
     "offset": 212128,
     "orig": "200f003501000014c80000b0088d43f9080140b90804003401000014a0feffd000d41b91e0ff00f9f0d6ff97e30300aaa0feffd000701891a1feffd021942b9182fefff042ac2791e20301f9a4feffd0841c0f91e40b01f9a6feffb0c614109105228152e50f02b946590094e0ff40f9ded6ff97e10341f9e30f42b9e40b41f9e20300aa80fefff0000022914aefff9701000014",
     "new": "a004003401000014c80000b0085943f9080140f9a008805200013fd6e103002ae85741f9000d40f9e2c30f91dd5b0094a00d0035e90742f929014039490d0034a9000010e90702f9290280d2e90302f911000014636f6d2e6f706c75732e63616d657261000000001f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d5",
@@ -70,6 +78,7 @@
   "dst_sha256": "fffa818466efbfa36b5797229f906144f9d816133b0dbeead2b1efbeb1781429",
   "edits": [
    {
+    "id": "sensorbridge-soname",
     "offset": 12267,
     "orig": "65",
     "new": "32",

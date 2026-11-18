@@ -1,0 +1,87 @@
+diff --git a/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali b/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
+index 6f0586d..edde947 100644
+--- a/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
++++ b/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
+@@ -301,7 +301,7 @@
+     .line 38
+     new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
+ 
+-    const-string v4, "com.oplus.aps.sat.preview.master.pipeline"
++    const-string v4, "com.oplus.aps.sat.snapshot.master.pipeline"
+ 
+     invoke-direct {v0, v4, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 
+diff --git a/smali/com/oplus/ocs/camera/metadata/UConfigureKeys.smali b/smali/com/oplus/ocs/camera/metadata/UConfigureKeys.smali
+index 315896e..c0e3a26 100644
+--- a/smali/com/oplus/ocs/camera/metadata/UConfigureKeys.smali
++++ b/smali/com/oplus/ocs/camera/metadata/UConfigureKeys.smali
+@@ -1381,7 +1381,7 @@
+     .line 24
+     new-instance v0, Lcom/oplus/ocs/camera/metadata/ConfigureKey;
+ 
+-    const-string v1, "com.oplus.full.bining.qbc.enable"
++    const-string v1, "com.oplus.quad2binning"
+ 
+     const-class v2, Ljava/lang/Boolean;
+ 
+diff --git a/smali/com/oplus/ocs/camera/metadata/URequestKeys.smali b/smali/com/oplus/ocs/camera/metadata/URequestKeys.smali
+index c6d4939..9bb0d4b 100644
+--- a/smali/com/oplus/ocs/camera/metadata/URequestKeys.smali
++++ b/smali/com/oplus/ocs/camera/metadata/URequestKeys.smali
+@@ -759,7 +759,7 @@
+     .line 101
+     new-instance v0, Lcom/oplus/ocs/camera/metadata/PreviewKey;
+ 
+-    const-string v2, "com.oplus.sensor.exposureTime"
++    const-string v2, "android.sensor.exposureTime"
+ 
+     const-class v4, Ljava/lang/Long;
+ 
+diff --git a/smali/com/oplus/ocs/camera/metadata/UTakePictureKeys.smali b/smali/com/oplus/ocs/camera/metadata/UTakePictureKeys.smali
+index 662f048..5c1bd59 100644
+--- a/smali/com/oplus/ocs/camera/metadata/UTakePictureKeys.smali
++++ b/smali/com/oplus/ocs/camera/metadata/UTakePictureKeys.smali
+@@ -1717,7 +1717,7 @@
+     .line 276
+     new-instance v0, Lcom/oplus/ocs/camera/metadata/PreviewKey;
+ 
+-    const-string v1, "com.oplus.full.bining.qbc.enable"
++    const-string v1, "com.oplus.quad2binning"
+ 
+     const-class v6, Ljava/lang/Boolean;
+ 
+diff --git a/smali/com/oplus/ocs/camera/metadata/parameter/converter/BaseParameterConverter.smali b/smali/com/oplus/ocs/camera/metadata/parameter/converter/BaseParameterConverter.smali
+index dbf600e..1faa697 100644
+--- a/smali/com/oplus/ocs/camera/metadata/parameter/converter/BaseParameterConverter.smali
++++ b/smali/com/oplus/ocs/camera/metadata/parameter/converter/BaseParameterConverter.smali
+@@ -1069,7 +1069,7 @@
+     .line 39
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v1, "com.oplus.full.bining.qbc.enable"
++    const-string v1, "com.oplus.quad2binning"
+ 
+     const-class v3, Ljava/lang/Boolean;
+ 
+@@ -1330,7 +1330,7 @@
+     .line 96
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v1, "com.oplus.sensor.exposureTime"
++    const-string v1, "android.sensor.exposureTime"
+ 
+     const-class v5, Ljava/lang/Long;
+ 
+diff --git a/smali/com/oplus/ocs/camera/producer/device/CameraMetadataKey.smali b/smali/com/oplus/ocs/camera/producer/device/CameraMetadataKey.smali
+index 249868c..f9931c1 100644
+--- a/smali/com/oplus/ocs/camera/producer/device/CameraMetadataKey.smali
++++ b/smali/com/oplus/ocs/camera/producer/device/CameraMetadataKey.smali
+@@ -1535,7 +1535,7 @@
+     .line 255
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v1, "com.oplus.app.filter.type"
++    const-string v1, "com.oplus.FilterType"
+ 
+     const-class v4, Ljava/lang/Integer;
+ 

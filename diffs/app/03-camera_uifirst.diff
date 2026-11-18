@@ -1,0 +1,22 @@
+diff --git a/smali_classes12/ie/d.smali b/smali_classes12/ie/d.smali
+index 5c2e9d7..5656b90 100644
+--- a/smali_classes12/ie/d.smali
++++ b/smali_classes12/ie/d.smali
+@@ -165,7 +165,7 @@
+     move-result-object v6
+ 
+     .line 63
+-    invoke-virtual {v6, v0, v5, v3}, Lcom/oplus/uifirst/OplusUIFirstManager;->setUxThreadValue(IILjava/lang/String;)V
++    nop
+ 
+     .line 64
+     .line 65
+@@ -199,7 +199,7 @@
+     move-result-object v6
+ 
+     .line 80
+-    invoke-virtual {v6, v0, v5, v3}, Lcom/oplus/uifirst/OplusUIFirstManager;->setUxThreadValue(IILjava/lang/String;)V
++    nop
+ 
+     .line 81
+     .line 82

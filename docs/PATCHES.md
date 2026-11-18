@@ -1,5 +1,7 @@
 # Patches
 
+The exact change each patch makes is saved in `diffs/`. How to leave any of them out: [REVERTING.md](REVERTING.md).
+
 Every patch locates its target by content (a smali anchor, the exact original bytes, or a file hash) and fails loudly if it isn't there. A different firmware build therefore stops the build at the first patch that no longer fits, and never produces a silently broken module.
 
 ## Camera app (`OplusCamera.apk`), `tools/patches.py`

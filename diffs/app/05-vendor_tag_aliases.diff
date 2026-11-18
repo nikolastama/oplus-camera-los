@@ -1,0 +1,62 @@
+diff --git a/smali/n8/o.smali b/smali/n8/o.smali
+index a751e8b..23a4d5a 100644
+--- a/smali/n8/o.smali
++++ b/smali/n8/o.smali
+@@ -2648,7 +2648,7 @@
+     .line 29
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v1, "com.oplus.rear.remosaic.enable"
++    const-string v1, "com.oplus.QCFARemosaicType"
+ 
+     invoke-direct {v0, v1, v2}, Landroid/hardware/camera2/CaptureRequest$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 
+@@ -3001,7 +3001,7 @@
+     .line 68
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v9, "com.oplus.sensor.exposureTime"
++    const-string v9, "android.sensor.exposureTime"
+ 
+     const-class v12, Ljava/lang/Long;
+ 
+@@ -3466,7 +3466,7 @@
+     .line 119
+     new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
+ 
+-    const-string v15, "com.oplus.pdaf.converge.status"
++    const-string v15, "com.oplus.is.pdaf.done"
+ 
+     invoke-direct {v0, v15, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 
+@@ -3595,7 +3595,7 @@
+     .line 134
+     new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
+ 
+-    const-string v10, "com.oplus.control.face.dr"
++    const-string v10, "com.oplus.face.occlusion.info"
+ 
+     invoke-direct {v0, v10, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 
+@@ -4374,7 +4374,7 @@
+     .line 223
+     new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+-    const-string v8, "com.oplus.burst.capture.single"
++    const-string v8, "com.oplus.burst.capture"
+ 
+     invoke-direct {v0, v8, v3}, Landroid/hardware/camera2/CaptureRequest$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 
+diff --git a/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali b/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
+index a202a8c..fd23dc7 100644
+--- a/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
++++ b/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
+@@ -6354,7 +6354,7 @@
+     .line 6
+     new-instance v0, Lcom/oplus/ocs/camera/CameraParameter$ConfigureKey;
+ 
+-    const-string v5, "com.oplus.full.bining.qbc.enable"
++    const-string v5, "com.oplus.quad2binning"
+ 
+     invoke-direct {v0, v5, v6, v3}, Lcom/oplus/ocs/camera/CameraParameter$ConfigureKey;-><init>(Ljava/lang/String;Ljava/lang/Class;I)V
+ 

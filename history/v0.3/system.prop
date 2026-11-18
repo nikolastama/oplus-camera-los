@@ -1,0 +1,14 @@
+# OnePlus camera: only properties the camera app, its SDK or the OnePlus framework shim read.
+# Values from OxygenOS CPH2745_16.0.10.601. Loaded at boot in memory only (never persisted);
+# they disappear when the module is removed. Nothing here is read by LineageOS or the HAL.
+ro.build.version.oplus.api=38
+ro.build.version.oplus.sub_api=50
+ro.build.version.oplusrom=V16.1.0
+ro.oplus.system.camera.name=com.oplus.camera
+ro.oplus.camera.defercap.support=1
+ro.oplus.camera.defercap.all.quick.visible.support=1
+persist.camera.override_enable=true
+persist.camera.override_preview_hdr_support=false
+persist.sys.feature.localhdr_version=2
+persist.sys.feature.uhdr.support=true
+persist.sys.oplus.anim_level=1

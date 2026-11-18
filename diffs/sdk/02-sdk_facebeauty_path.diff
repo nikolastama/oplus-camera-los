@@ -1,0 +1,13 @@
+diff --git a/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali b/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
+index f58791b..fb54177 100644
+--- a/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
++++ b/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
+@@ -16,7 +16,7 @@
+ 
+     const-string v2, "ApsFaceBeautyPreviewProductJni"
+ 
+-    const-string v3, "/product/lib64/libApsFaceBeautyPreviewProductJni.so"
++    const-string v3, "/system_ext/lib64/libApsFaceBeautyPreviewProductJni.so"
+ 
+     if-nez v0, :cond_3
+ 

@@ -1,0 +1,22 @@
+diff --git a/smali_classes3/zb/i.smali b/smali_classes3/zb/i.smali
+index a27646a..5fa1c1d 100644
+--- a/smali_classes3/zb/i.smali
++++ b/smali_classes3/zb/i.smali
+@@ -295,7 +295,7 @@
+ 
+     .line 45
+     .line 46
+-    const-string v2, "/odm/etc/camera/singleblur/license_release.license"
++    const-string v2, "/system_ext/etc/camera/singleblur/license_release.license"
+ 
+     .line 47
+     .line 48
+@@ -316,7 +316,7 @@
+ 
+     .line 56
+     .line 57
+-    const-string v0, "singleblur/license_release.license"
++    const-string v0, "../../../system_ext/etc/camera/singleblur/license_release.license"
+ 
+     .line 58
+     .line 59

@@ -1,0 +1,13 @@
+diff --git a/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali b/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
+index 6f0586d..edde947 100644
+--- a/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
++++ b/smali/com/oplus/ocs/camera/consumer/apsAdapter/ApsCameraMetadataKey.smali
+@@ -301,7 +301,7 @@
+     .line 38
+     new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
+ 
+-    const-string v4, "com.oplus.aps.sat.preview.master.pipeline"
++    const-string v4, "com.oplus.aps.sat.snapshot.master.pipeline"
+ 
+     invoke-direct {v0, v4, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+ 

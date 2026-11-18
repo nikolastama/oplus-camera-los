@@ -40,6 +40,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md). Removal is described there too.
 | [docs/PATCHES.md](docs/PATCHES.md) | Every patch: app, SDK, native libraries, install-time fixes |
 | [docs/BUILDING.md](docs/BUILDING.md) | Building the module zip from a firmware dump |
 | [docs/MAINTAINING.md](docs/MAINTAINING.md) | **Updating to new OxygenOS/ColorOS blobs** and new LineageOS builds, test checklist |
+| [docs/REVERTING.md](docs/REVERTING.md) | **Every modification and debloat step, its saved original, and how to undo it** |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history and what each version fixed |
 
 ## Repository layout
@@ -57,7 +58,10 @@ tools/
   smali/           smali classes added to the app (gallery hand-off)
   oemwrap/         source + build script for the camera-layer wrapper
   stubs-src/       source of the OnePlus framework stubs (oplus-camera-stubs.jar)
+  make_diffs.py    regenerates diffs/ after a patch changes
   deps.py, linkcheck.py, jnitab.py   analysis helpers used when updating blobs
+diffs/             one unified diff per app/SDK patch against the stock decode (for review and reversal)
+history/           scripts and config of every released version (v0.1 to now) and each zip's file list
 docs/
 ```
 

@@ -12,6 +12,13 @@ Every step verifies what it changes: smali patches assert their anchors (tools/p
 native byte patches check the original bytes and the final sha256 (tools/binpatches.json),
 and the APS client patch checks both hashes. A different firmware build therefore fails loudly
 at the first patch that no longer fits instead of producing a silently broken module.
+
+Every change can be left out for testing or reverting (see docs/REVERTING.md):
+    --list-patches                     show every patch / edit id
+    --skip <name>                      skip a smali patch function, apsclient_force_java_heif,
+                                       or a native edit id from binpatches.json (repeatable)
+    --enable-component <class>         keep one of the components camera_disable_oem_components
+                                       would disable (repeatable)
 """
 import argparse, hashlib, json, os, shutil, subprocess, sys, zipfile
 from pathlib import Path
@@ -62,11 +69,16 @@ def run(*cmd):
     subprocess.run(list(map(str, cmd)), check=True, stdout=subprocess.DEVNULL)
 
 
-def binpatch(path, spec):
+def binpatch(path, spec, skip=()):
     d = bytearray(path.read_bytes())
     if hashlib.sha256(d).hexdigest() != spec['src_sha256']:
         print(f'  ! {spec["src"]}: not the expected build, locating edits by their bytes')
+    skipped = False
     for e in spec['edits']:
+        if e['id'] in skip:
+            print(f'  SKIPPED {e["id"]}')
+            skipped = True
+            continue
         o, n, off = bytes.fromhex(e['orig']), bytes.fromhex(e['new']), e['offset']
         if bytes(d[off:off + len(o)]) != o:
             hits = [i for i in range(len(d)) if d.startswith(o, i)] if len(o) >= 12 else []
@@ -76,27 +88,53 @@ def binpatch(path, spec):
             off = hits[0]
         d[off:off + len(o)] = n
     path.write_bytes(bytes(d))
-    if hashlib.sha256(d).hexdigest() != spec['dst_sha256']:
+    if not skipped and hashlib.sha256(d).hexdigest() != spec['dst_sha256']:
         print(f'  ! {spec["dst"]}: result differs from the tested build (expected for new firmware)')
 
 
 def apktool_patch(args, src_file, workdir, fns, out_file):
     run('java', '-jar', args.apktool, 'd', '-f', '-o', workdir, src_file)
     for f in fns:
+        if f.__name__ in args.skip:
+            print(f'  SKIPPED {f.__name__}')
+            continue
         print(f'  patch {f.__name__}: {f(workdir)}')
     run('java', '-jar', args.apktool, 'b', workdir, '-o', out_file)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--dump', required=True, type=Path)
+    ap.add_argument('--list-patches', action='store_true')
+    ap.add_argument('--skip', action='append', default=[])
+    ap.add_argument('--enable-component', action='append', default=[])
+    ap.add_argument('--dump', type=Path)
     ap.add_argument('--out', default=REPO / 'out', type=Path)
-    ap.add_argument('--apktool', required=True)
-    ap.add_argument('--signer', required=True, help='uber-apk-signer jar')
-    ap.add_argument('--keystore', required=True)
+    ap.add_argument('--apktool')
+    ap.add_argument('--signer', help='uber-apk-signer jar')
+    ap.add_argument('--keystore')
     ap.add_argument('--ks-alias', default='opluscam')
-    ap.add_argument('--ks-pass', required=True)
+    ap.add_argument('--ks-pass')
     args = ap.parse_args()
+    edits = [e['id'] for s in json.loads((HERE / 'binpatches.json').read_text()) for e in s['edits']]
+    if args.list_patches:
+        print('app:     ', ' '.join(f.__name__ for f in APP_PATCHES))
+        print('sdk:     ', ' '.join(f.__name__ for f in SDK_PATCHES))
+        print('adapter: ', ' '.join(f.__name__ for f in ADAPTER_PATCHES))
+        print('native:   apsclient_force_java_heif', ' '.join(edits))
+        print('components disabled:', ' '.join(P.OEM_ONLY_COMPONENTS))
+        return
+    for need in ('dump', 'apktool', 'signer', 'keystore', 'ks_pass'):
+        if not getattr(args, need):
+            ap.error(f'--{need.replace("_", "-")} is required')
+    known = {f.__name__ for f in APP_PATCHES + SDK_PATCHES} | {'apsclient_force_java_heif'} | set(edits)
+    bad = [s for s in args.skip if s not in known]
+    if bad:
+        ap.error(f'unknown --skip {bad}; see --list-patches')
+    args.skip = set(args.skip)
+    for c in args.enable_component:
+        if c not in P.OEM_ONLY_COMPONENTS:
+            ap.error(f'{c} is not in OEM_ONLY_COMPONENTS')
+        P.OEM_ONLY_COMPONENTS.remove(c)
     dump, out = args.dump.resolve(), args.out.resolve()
     work, mod = out / 'work', out / 'module'
     shutil.rmtree(out, ignore_errors=True)
@@ -114,14 +152,17 @@ def main():
     for s, d in EXTRA_COPIES.items():
         (S / d).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src(dump, s), S / d)
-    print(f'  APS client: {P.apsclient_force_java_heif(S / "system_ext/lib64/libAPSClient-cmd-jni.so")}')
+    if 'apsclient_force_java_heif' in args.skip:
+        print('  SKIPPED apsclient_force_java_heif')
+    else:
+        print(f'  APS client: {P.apsclient_force_java_heif(S / "system_ext/lib64/libAPSClient-cmd-jni.so")}')
 
     print('[2/6] OnePlus camera layer (odm)')
     for spec in json.loads((HERE / 'binpatches.json').read_text()):
         dst = S / spec['dst']
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src(dump, spec['src']), dst)
-        binpatch(dst, spec)
+        binpatch(dst, spec, args.skip)
     (S / 'odm/lib64/hw').mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPO / 'prebuilt/camera.oemlayer.wrap.so', S / 'odm/lib64/hw/camera.oemlayer.v2.so')
 

@@ -1,0 +1,36 @@
+# OnePlus camera feature flags (values from OxygenOS CPH2745_16.0.10.601). Runtime only:
+# the root manager loads these at boot and they vanish when the module is removed.
+ro.build.version.oplus.api=38
+ro.build.version.oplus.sub_api=50
+ro.build.version.module.sub_api=2
+ro.build.version.oplusrom=V16.1.0
+ro.build.version.oplusrom.display=16.0.10
+ro.build.version.oplusrom.confidential=V16.1.0
+ro.oplus.image.system_ext.brand=oneplus
+ro.oplus.system.camera.name=com.oplus.camera
+ro.oplus.system.camera.flashlight=com.oplus.motor.flashlight
+ro.oplus.camera.defercap.support=1
+ro.oplus.camera.defercap.all.quick.visible.support=1
+ro.oplus.camera.livephoto.support=1
+ro.oplus.camera.facing.front.need.disable.nfc=1
+ro.oplus.camera.portrait.center.switch=oplus.switch.portrait.center
+ro.oplus.camera.portrait_center.prefix=oplus.portrait.center.
+ro.oplus.camera.video.beauty.switch=oplus.switch.video.beauty
+ro.oplus.camera.video_beauty.prefix=oplus.video.beauty.
+ro.oplus.camera.speechassist=true
+ro.oplus.fusionlight=true
+ro.camera.notify_nfc=1
+ro.camera.disableHeicUltraHDR=true
+ro.camera.enableCamera1MaxZsl=1
+ro.camera.privileged.3rdpartyApp=com.mediatek.expert.mtkcamhelper;com.aiunit.aon;
+ro.vendor.oplus.hdr.uniform=1
+ro.vendor.oplus.vendorxml.enable=1
+ro.vendor.oplus.camera.backCamSize=50MP+50MP+50MP
+ro.vendor.oplus.camera.frontCamSize=32MP
+oplus.software.camera.10bit=1
+persist.camera.override_enable=true
+persist.camera.override_preview_hdr_support=false
+persist.sys.feature.localhdr_version=2
+persist.sys.feature.support.edrlistener=true
+persist.sys.feature.uhdr.support=true
+persist.sys.oplus.anim_level=1

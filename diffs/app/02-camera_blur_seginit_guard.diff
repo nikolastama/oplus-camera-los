@@ -1,0 +1,36 @@
+diff --git a/smali/xb/b.smali b/smali/xb/b.smali
+index 64c0f4c..275d9e8 100644
+--- a/smali/xb/b.smali
++++ b/smali/xb/b.smali
+@@ -397,6 +397,14 @@
+     .line 111
+     sput-object v0, Lxb/b;->w:[I
+ 
++    if-nez v0, :cond_los_blur_seginit_ok
++
++    monitor-exit v10
++
++    return v12
++
++    :cond_los_blur_seginit_ok
++
+     .line 112
+     .line 113
+     new-instance v0, Ll6/g7;
+diff --git a/smali/zb/l.smali b/smali/zb/l.smali
+index fd1c493..81366df 100644
+--- a/smali/zb/l.smali
++++ b/smali/zb/l.smali
+@@ -780,6 +780,12 @@
+     .line 77
+     sput-object p0, Lxb/b;->w:[I
+ 
++    if-nez p0, :cond_los_blur_size_ok
++
++    return-void
++
++    :cond_los_blur_size_ok
++
+     .line 78
+     .line 79
+     new-instance p0, Ljava/lang/StringBuilder;

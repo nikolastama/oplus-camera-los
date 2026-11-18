@@ -1,0 +1,39 @@
+diff --git a/smali/com/oplus/ocs/camera/producer/device/Camera2Impl.smali b/smali/com/oplus/ocs/camera/producer/device/Camera2Impl.smali
+index 8e7ce32..c8e7cd3 100644
+--- a/smali/com/oplus/ocs/camera/producer/device/Camera2Impl.smali
++++ b/smali/com/oplus/ocs/camera/producer/device/Camera2Impl.smali
+@@ -10980,6 +10980,8 @@
+     .line 3244
+     iget-object v5, v0, Lcom/oplus/ocs/camera/producer/device/Camera2Impl;->mPreviewBuilder:Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;
+ 
++    invoke-static {v5}, Lcom/oplus/ocs/camera/producer/device/Camera2Impl;->losAddPackageTag(Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;)V
++
+     invoke-virtual {v5}, Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;->build()Landroid/hardware/camera2/CaptureRequest;
+ 
+     move-result-object v5
+@@ -18835,3 +18837,25 @@
+     :goto_1
+     return-void
+ .end method
++
++.method private static losAddPackageTag(Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;)V
++    .locals 4
++
++    :try_start_0
++    new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
++    const-string v1, "com.oplus.packageName"
++    const-class v2, [B
++    invoke-direct {v0, v1, v2}, Landroid/hardware/camera2/CaptureRequest$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
++    const-string v1, "com.oplus.camera"
++    invoke-virtual {v1}, Ljava/lang/String;->getBytes()[B
++    move-result-object v1
++    array-length v2, v1
++    add-int/lit8 v2, v2, 0x1
++    invoke-static {v1, v2}, Ljava/util/Arrays;->copyOf([BI)[B
++    move-result-object v1
++    invoke-virtual {p0, v0, v1}, Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;->setParameter(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)Z
++    :try_end_0
++    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
++    :catch_0
++    return-void
++.end method

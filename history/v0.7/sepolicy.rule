@@ -1,0 +1,49 @@
+# OnePlus Camera module - SELinux rules (loaded by the root manager, gone when the module is removed).
+# The camera runs as a privileged app (priv_app). Rules are the camera-relevant subset of
+# Infinity X's opluscamera_app policy, retargeted to priv_app. A rule naming a type that this
+# LineageOS build doesn't define is skipped on its own without affecting the others.
+
+# --- own data under /data/system/camera_rus (APS deferred-capture bookkeeping)
+type oplus_camera_rus_file file_type
+typeattribute oplus_camera_rus_file file_type
+typeattribute oplus_camera_rus_file data_file_type
+typeattribute oplus_camera_rus_file core_data_file_type
+allow priv_app oplus_camera_rus_file dir { read write create getattr setattr rename open add_name remove_name search rmdir }
+allow priv_app oplus_camera_rus_file file { read write create getattr setattr append unlink rename open map }
+allow cameraserver oplus_camera_rus_file dir { read open search getattr }
+allow cameraserver oplus_camera_rus_file file { read getattr setattr open }
+
+# --- vendor camera HAL: binder both ways, offline processing service, properties
+allow priv_app hal_camera_default binder { call transfer }
+allow hal_camera_default priv_app binder { call transfer }
+allow priv_app hal_camera_default fd use
+allow priv_app vendor_hal_offlinecamera_service service_manager find
+allow priv_app vendor_camera_prop file { read open getattr map }
+allow priv_app camera_config_prop file { read open getattr map }
+allow priv_app vendor_adsprpc_prop file { read open getattr map }
+
+# --- Hexagon DSP / FastRPC (APS, portrait segmentation, HDR)
+allow priv_app adsprpcd_file dir { read open search getattr }
+allow priv_app public_adsprpcd_file file { read open getattr map execute }
+allow priv_app vendor_qdsp_device chr_file { ioctl open read }
+allow priv_app same_process_hal_file file { read open getattr map execute }
+typeattribute priv_app vendor_hal_dspmanager_client
+typeattribute priv_app vendor_hal_qspmhal_client
+typeattribute priv_app vendor_hal_unsignedhexlp_client
+allow priv_app vendor_hal_hexlp_server fd use
+
+# --- camera tuning / update data written by the stock app
+allow priv_app vendor_camera_data_file dir { add_name create getattr open read remove_name rmdir search write }
+allow priv_app vendor_camera_data_file file { create getattr open read rename unlink write append map }
+allow priv_app vendor_camera_update_data_file dir { read open search write add_name remove_name create getattr }
+allow priv_app vendor_camera_update_data_file file { read open write create unlink getattr }
+allow priv_app occe_data_file dir { read open search getattr }
+allow priv_app occe_data_file file { read open getattr map }
+
+# --- cameraserver may adjust the camera's scheduling (stock behaviour)
+allow cameraserver priv_app process setsched
+
+# --- quiet noisy, harmless probes
+dontaudit priv_app debugfs_tracing file { read write open }
+dontaudit priv_app default_android_service service_manager find
+dontaudit priv_app vendor_xdsp_device chr_file { getattr ioctl open read write }

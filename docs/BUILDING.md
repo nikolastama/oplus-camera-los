@@ -31,6 +31,10 @@ What the script does:
 5. Decodes, patches, rebuilds and signs the app. Its native libraries are extracted from the stock APK into `priv-app/OplusCamera/lib/arm64`.
 6. Verifies: no `/vendor` files, script syntax, checksums. Then zips.
 
+## Leaving changes out
+
+`--list-patches` shows every patch and native edit. `--skip <name>` leaves one out, and `--enable-component <class>` keeps a disabled component enabled. Details: REVERTING.md.
+
 ## Reproducibility
 
 Built from the 16.0.10.601 firmware, every file matches the released module byte for byte, except the APK and the two SDK jars. Those three have identical contents and differ only in zip metadata and the signature.
