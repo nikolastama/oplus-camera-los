@@ -24,7 +24,7 @@ OnePlus 15 (`infiniti`) · official LineageOS 24 · KernelSU or KernelSU-Next ·
 
 1. Install [**meta-overlayfs**](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1) in KernelSU → Modules, then reboot.
 2. Download the zip from **[Releases](https://github.com/nikolastama/oplus-camera-los/releases/latest)**, install it in KernelSU → Modules, then reboot.
-3. In KernelSU → Superuser → **Camera** → App Profile, turn **Umount modules** off. Do the same for your launcher if *Umount modules by default* is on.
+3. In KernelSU → Superuser, open the ⋮ menu and turn on **Show system apps**. Open **com.oplus.camera** and turn **Umount modules** off. Do the same for your launcher if *Umount modules by default* is on.
 
 **Update:** install the new zip over the old one. **Remove:** delete the module and reboot.
 
