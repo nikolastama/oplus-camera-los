@@ -18,11 +18,11 @@ A systemless KernelSU module that brings the OxygenOS camera app, with OnePlus's
 
 ## Requirements
 
-OnePlus 15 (`infiniti`) · official LineageOS 24 · KernelSU or KernelSU-Next · [meta-overlayfs](https://github.com/tiann/KernelSU) metamodule
+OnePlus 15 (`infiniti`) · official LineageOS 24 · KernelSU or KernelSU-Next · [meta-overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1) metamodule
 
 ## Install
 
-1. Install **meta-overlayfs** in KernelSU → Modules, then reboot.
+1. Install [**meta-overlayfs**](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1) in KernelSU → Modules, then reboot.
 2. Download the zip from **[Releases](https://github.com/nikolastama/oplus-camera-los/releases/latest)**, install it in KernelSU → Modules, then reboot.
 3. In KernelSU → Superuser → **Camera** → App Profile, turn **Umount modules** off. Do the same for your launcher if *Umount modules by default* is on.
 

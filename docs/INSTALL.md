@@ -8,7 +8,7 @@
 
 ## Install
 
-1. Install the metamodule (meta-overlayfs) if you don't have one yet, and reboot.
+1. Install the metamodule ([meta-overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1)) if you don't have one yet, and reboot.
 2. KernelSU manager → Modules → Install → choose `oplus-camera-los-vX.Y.zip`.
    The installer:
    - verifies the device, the ROM and that the OnePlus HAL libraries it needs are present;
