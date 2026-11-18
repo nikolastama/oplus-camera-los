@@ -7,7 +7,7 @@ Reproduce the problem, then tap **Action** on the module in the KernelSU manager
 - `summary.txt`: module version, layer files, mounts on `/vendor`, `/odm` and `/system_ext`, overlay layers, directory labels, metamodule copy contents, recent SELinux denials touching module paths, library-fix status, data-dir labels;
 - `logcat-all.txt`, `logcat-crash.txt`, tombstones, `dumpsys media.camera`, `getprop`, package dump, the HAL's camera log (`cam_alog`) and hashes of the relevant vendor libraries.
 
-Removing the module deletes these bundles.
+Removing the module deletes these bundles. A bundle can contain device identifiers and details about other apps, so look through it before posting it publicly (see [SECURITY.md](../SECURITY.md)).
 
 ## Common problems
 

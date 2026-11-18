@@ -20,7 +20,14 @@ Every change can be left out for testing or reverting (see docs/REVERTING.md):
     --enable-component <class>         keep one of the components camera_disable_oem_components
                                        would disable (repeatable)
 """
-import argparse, hashlib, json, os, shutil, subprocess, sys, zipfile
+
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -28,10 +35,19 @@ REPO = HERE.parent
 sys.path.insert(0, str(HERE))
 import patches as P  # noqa: E402
 
-APP_PATCHES = [P.camera_font, P.camera_blur_seginit_guard, P.camera_uifirst,
-               P.strip_oem_component_permissions, P.vendor_tag_aliases, P.camera_blur_license_path,
-               P.camera_defer_ufs_probe, P.camera_gallery_fallback, P.camera_disable_oem_components,
-               P.camera_scoped_props, P.camera_drop_embedded_libs]
+APP_PATCHES = [
+    P.camera_font,
+    P.camera_blur_seginit_guard,
+    P.camera_uifirst,
+    P.strip_oem_component_permissions,
+    P.vendor_tag_aliases,
+    P.camera_blur_license_path,
+    P.camera_defer_ufs_probe,
+    P.camera_gallery_fallback,
+    P.camera_disable_oem_components,
+    P.camera_scoped_props,
+    P.camera_drop_embedded_libs,
+]
 SDK_PATCHES = [P.sdk_runtime, P.sdk_facebeauty_path, P.sdk_session_package_tag, P.vendor_tag_aliases]
 ADAPTER_PATCHES = [P.vendor_tag_aliases]
 STUBS_PATCHES = [P.stubs_scoped_props]
@@ -43,13 +59,14 @@ ADAPTER_SRC = 'my_product/product_overlay/framework/com.oplus.camera.unit.sdk.ad
 EXTRA_COPIES = {
     'odm/lib64/libOplusSecurity.so': 'odm/lib64/libOplusSecurity.so',
     'odm/etc/camera/singleblur/license_release.license': 'system_ext/etc/camera/singleblur/license_release.license',
-    'my_product/product_overlay/etc/permissions/oplus_camera_default_grant_permissions_list.xml':
-        'system_ext/etc/default-permissions/oplus_camera_default_grant_permissions_list.xml',
+    'my_product/product_overlay/etc/permissions/oplus_camera_default_grant_permissions_list.xml': 'system_ext/etc/default-permissions/oplus_camera_default_grant_permissions_list.xml',
 }
 # selection.json entries that are not shipped (the HAL-side interfaces exist on LineageOS)
-SKIP = {'system/lib64/vendor.oplus.hardware.cameraextension-V1-ndk.so',
-        'system/lib64/vendor.oplus.hardware.cameraextension@1.0.so',
-        'system/lib64/vendor.oplus.hardware.sendextcamcmd-V2-ndk.so'}
+SKIP = {
+    'system/lib64/vendor.oplus.hardware.cameraextension-V1-ndk.so',
+    'system/lib64/vendor.oplus.hardware.cameraextension@1.0.so',
+    'system/lib64/vendor.oplus.hardware.sendextcamcmd-V2-ndk.so',
+}
 # app-namespace copies of two system_ext helpers (the APK loads them from its own lib dir)
 APP_LIB_FROM_SYSTEM_EXT = ['libHeifEncoderWrapper.so', 'libNativeWinBuffExchange.so']
 
@@ -81,13 +98,15 @@ def binpatch(path, spec, skip=()):
             skipped = True
             continue
         o, n, off = bytes.fromhex(e['orig']), bytes.fromhex(e['new']), e['offset']
-        if bytes(d[off:off + len(o)]) != o:
+        if bytes(d[off : off + len(o)]) != o:
             hits = [i for i in range(len(d)) if d.startswith(o, i)] if len(o) >= 12 else []
             if len(hits) != 1:
-                raise SystemExit(f'{spec["dst"]}: edit at {off:#x} ({e["why"]}) does not fit this build; '
-                                 'see docs/MAINTAINING.md')
+                raise SystemExit(
+                    f'{spec["dst"]}: edit at {off:#x} ({e["why"]}) does not fit this build; '
+                    'see docs/MAINTAINING.md'
+                )
             off = hits[0]
-        d[off:off + len(o)] = n
+        d[off : off + len(o)] = n
     path.write_bytes(bytes(d))
     if not skipped and hashlib.sha256(d).hexdigest() != spec['dst_sha256']:
         print(f'  ! {spec["dst"]}: result differs from the tested build (expected for new firmware)')
@@ -128,7 +147,11 @@ def main():
     for need in ('dump', 'apktool', 'signer', 'keystore', 'ks_pass'):
         if not getattr(args, need):
             ap.error(f'--{need.replace("_", "-")} is required')
-    known = {f.__name__ for f in APP_PATCHES + SDK_PATCHES + STUBS_PATCHES} | {'apsclient_force_java_heif'} | set(edits)
+    known = (
+        {f.__name__ for f in APP_PATCHES + SDK_PATCHES + STUBS_PATCHES}
+        | {'apsclient_force_java_heif'}
+        | set(edits)
+    )
     bad = [s for s in args.skip if s not in known]
     if bad:
         ap.error(f'unknown --skip {bad}; see --list-patches')
@@ -172,16 +195,41 @@ def main():
     fw = S / 'system_ext/framework'
     fw.mkdir(parents=True, exist_ok=True)
     apktool_patch(args, src(dump, SDK_SRC), work / 'sdk', SDK_PATCHES, fw / 'com.oplus.camera.unit.sdk.jar')
-    apktool_patch(args, src(dump, ADAPTER_SRC), work / 'adapter', ADAPTER_PATCHES,
-                  fw / 'com.oplus.camera.unit.sdk.adapter.jar')
-    apktool_patch(args, REPO / 'prebuilt/oplus-camera-stubs.jar', work / 'stubs', STUBS_PATCHES,
-                  fw / 'oplus-camera-stubs.jar')
+    apktool_patch(
+        args,
+        src(dump, ADAPTER_SRC),
+        work / 'adapter',
+        ADAPTER_PATCHES,
+        fw / 'com.oplus.camera.unit.sdk.adapter.jar',
+    )
+    apktool_patch(
+        args,
+        REPO / 'prebuilt/oplus-camera-stubs.jar',
+        work / 'stubs',
+        STUBS_PATCHES,
+        fw / 'oplus-camera-stubs.jar',
+    )
 
     print('[4/6] camera app')
     apk = src(dump, APK_SRC)
     apktool_patch(args, apk, work / 'app', APP_PATCHES, work / 'OplusCamera-unsigned.apk')
-    run('java', '-jar', args.signer, '-a', work / 'OplusCamera-unsigned.apk', '-o', work / 'signed',
-        '--ks', args.keystore, '--ksAlias', args.ks_alias, '--ksPass', args.ks_pass, '--ksKeyPass', args.ks_pass)
+    run(
+        'java',
+        '-jar',
+        args.signer,
+        '-a',
+        work / 'OplusCamera-unsigned.apk',
+        '-o',
+        work / 'signed',
+        '--ks',
+        args.keystore,
+        '--ksAlias',
+        args.ks_alias,
+        '--ksPass',
+        args.ks_pass,
+        '--ksKeyPass',
+        args.ks_pass,
+    )
     app = S / 'system_ext/priv-app/OplusCamera'
     (app / 'lib/arm64').mkdir(parents=True, exist_ok=True)
     shutil.copy2(next((work / 'signed').glob('*-aligned-signed.apk')), app / 'OplusCamera.apk')
@@ -201,8 +249,11 @@ def main():
     (out / 'MANIFEST.sha256').write_text(''.join(f'{sha(p)}  {p.relative_to(mod)}\n' for p in files))
 
     print('[6/6] zip')
-    ver = next(l.split('=', 1)[1].split()[0] for l in (mod / 'module.prop').read_text().splitlines()
-               if l.startswith('version='))
+    ver = next(
+        line.split('=', 1)[1].split()[0]
+        for line in (mod / 'module.prop').read_text().splitlines()
+        if line.startswith('version=')
+    )
     z = out / f'oplus-camera-los-{ver}.zip'
     with zipfile.ZipFile(z, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for p in sorted(mod.rglob('*')):

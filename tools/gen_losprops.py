@@ -8,6 +8,7 @@ reflective reads go through com.oplus.camera.los.LosProps: keys listed in PROPS 
 below, any other key falls through to the real system property. Edit PROPS, then rerun:
     python3 tools/gen_losprops.py
 """
+
 from pathlib import Path
 
 # Values from OxygenOS CPH2745_16.0.10.601.
@@ -16,7 +17,7 @@ PROPS = {
     'ro.build.version.oplus.sub_api': '50',
     'ro.build.version.oplusrom': 'V16.1.0',
     'ro.oplus.system.camera.name': 'com.oplus.camera',
-    'ro.oplus.camera.defercap.support': '1',           # required: the app throws without it
+    'ro.oplus.camera.defercap.support': '1',  # required: the app throws without it
     'ro.oplus.camera.defercap.all.quick.visible.support': '1',
     'persist.camera.override_enable': 'true',
     'persist.camera.override_preview_hdr_support': 'false',
@@ -30,14 +31,26 @@ S = 'Ljava/lang/String;'
 
 
 def value_method():
-    out = ['.method private static value(Ljava/lang/String;)Ljava/lang/String;',
-           '    .registers 3', '',
-           '    if-nez p0, :start', '    const/4 v0, 0x0', '    return-object v0', '', '    :start']
+    out = [
+        '.method private static value(Ljava/lang/String;)Ljava/lang/String;',
+        '    .registers 3',
+        '',
+        '    if-nez p0, :start',
+        '    const/4 v0, 0x0',
+        '    return-object v0',
+        '',
+        '    :start',
+    ]
     for i, (k, v) in enumerate(PROPS.items()):
-        out += [f'    const-string v0, "{k}"',
-                '    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z',
-                '    move-result v1', f'    if-eqz v1, :n{i}', f'    const-string v0, "{v}"',
-                '    return-object v0', f'    :n{i}']
+        out += [
+            f'    const-string v0, "{k}"',
+            '    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z',
+            '    move-result v1',
+            f'    if-eqz v1, :n{i}',
+            f'    const-string v0, "{v}"',
+            '    return-object v0',
+            f'    :n{i}',
+        ]
     out += ['    const/4 v0, 0x0', '    return-object v0', '.end method', '']
     return out
 

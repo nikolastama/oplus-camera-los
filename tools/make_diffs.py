@@ -5,7 +5,13 @@
 
 Run it after changing any patch in tools/patches.py, and commit the result with the change.
 """
-import argparse, hashlib, subprocess, sys, tempfile, zipfile
+
+import argparse
+import hashlib
+import subprocess
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -21,7 +27,9 @@ def record(args, src, name, fns, out):
         old.unlink()
     with tempfile.TemporaryDirectory() as td:
         t = Path(td) / name
-        subprocess.run(['java', '-jar', args.apktool, 'd', '-f', '-o', t, src], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ['java', '-jar', args.apktool, 'd', '-f', '-o', t, src], check=True, stdout=subprocess.DEVNULL
+        )
         subprocess.run(['git', 'init', '-q'], cwd=t, check=True)
         subprocess.run(['git', 'add', '-A'], cwd=t, check=True)
         subprocess.run(GIT + ['commit', '-qm', 'stock'], cwd=t, check=True)
@@ -30,13 +38,21 @@ def record(args, src, name, fns, out):
             subprocess.run(['git', 'add', '-A'], cwd=t, check=True)
             if f.__name__ == 'camera_drop_embedded_libs':
                 with zipfile.ZipFile(src) as z:
-                    lines = [f'{hashlib.sha256(z.read(n)).hexdigest()}  {len(z.read(n))}  {n}'
-                             for n in z.namelist() if n.startswith('lib/arm64-v8a/') and n.endswith('.so')]
+                    lines = [
+                        f'{hashlib.sha256(z.read(n)).hexdigest()}  {len(z.read(n))}  {n}'
+                        for n in z.namelist()
+                        if n.startswith('lib/arm64-v8a/') and n.endswith('.so')
+                    ]
                 (out / f'{i:02d}-{f.__name__}.txt').write_text(
                     '# removed from the APK (shipped in priv-app/OplusCamera/lib/arm64 instead); '
-                    'revert: --skip camera_drop_embedded_libs\n# sha256  size  file\n' + '\n'.join(lines) + '\n')
+                    'revert: --skip camera_drop_embedded_libs\n# sha256  size  file\n'
+                    + '\n'.join(lines)
+                    + '\n'
+                )
             else:
-                d = subprocess.run(['git', 'diff', '--cached'], cwd=t, check=True, capture_output=True, text=True).stdout
+                d = subprocess.run(
+                    ['git', 'diff', '--cached'], cwd=t, check=True, capture_output=True, text=True
+                ).stdout
                 (out / f'{i:02d}-{f.__name__}.diff').write_text(d)
             subprocess.run(GIT + ['commit', '-qm', f.__name__, '--allow-empty'], cwd=t, check=True)
             print(f'{name}: {f.__name__}')

@@ -42,6 +42,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md). Removal is described there too.
 | [docs/MAINTAINING.md](docs/MAINTAINING.md) | **Updating to new OxygenOS/ColorOS blobs** and new LineageOS builds, test checklist |
 | [docs/REVERTING.md](docs/REVERTING.md) | **Every modification and debloat step, its saved original, and how to undo it** |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history and what each version fixed |
+| [SECURITY.md](SECURITY.md) | **What the module loosens (permissions, SELinux, data dirs)**, debug-bundle privacy, how the binaries here are built |
 
 ## Repository layout
 
@@ -64,6 +65,14 @@ diffs/             one unified diff per app/SDK patch against the stock decode (
 history/           scripts and config of every released version (v0.1 to now) and each zip's file list
 docs/
 ```
+
+## Reviewing
+
+Start with `module/` (what runs on the device) and `SECURITY.md`, then `tools/patches.py` with the matching file in `diffs/`. The Python tools are formatted with `black -S` and checked with `ruff` (settings in `pyproject.toml`). `prebuilt/camera.oemlayer.wrap.so` can be rebuilt from `tools/oemwrap/` and compared byte for byte.
+
+## License
+
+The scripts, patches, tools and documentation in this repository are released under the [Apache License 2.0](LICENSE). This does not cover OnePlus/OPPO software: the camera app, SDK and libraries remain OnePlus/OPPO property and are not distributed here.
 
 ## Credits
 

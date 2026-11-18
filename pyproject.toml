@@ -1,0 +1,15 @@
+# Formatting and lint settings for the Python tools in tools/ (no package is built).
+#   black -S tools/
+#   ruff check tools/
+
+[tool.black]
+line-length = 110
+skip-string-normalization = true
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# smali/manifest anchors in patches.py must match the decoded files exactly; don't wrap them
+ignore = ["E501"]

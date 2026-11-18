@@ -5,6 +5,7 @@ commit c137d20) and retargeted to OxygenOS 16.0.10.601 (CPH2745 EX01) class name
 Every patch locates its target by a content anchor and fails loudly if the anchor
 is missing, so a different camera build can never be patched silently.
 """
+
 import re
 from hashlib import sha256
 from pathlib import Path
@@ -25,40 +26,67 @@ def _find(root, glob, anchor):
 
 # ---------------------------------------------------------------- OplusCamera.apk
 
+
 def camera_font(root):
     """TypeFaceUtil reads OEM font framework state absent on LineageOS -> Typeface.DEFAULT."""
     sig = 'public static a(Landroid/content/Context;)Landroid/graphics/Typeface;'
     for p in Path(root).glob('smali*/**/*.smali'):
         t = p.read_text(encoding='utf-8', errors='ignore')
         if '"TypeFaceUtil"' in t and f'.method {sig}' in t:
-            new = _replace_method(t, sig, '    .locals 1\n\n    sget-object v0, Landroid/graphics/Typeface;->DEFAULT:Landroid/graphics/Typeface;\n\n    return-object v0\n')
+            new = _replace_method(
+                t,
+                sig,
+                '    .locals 1\n\n    sget-object v0, Landroid/graphics/Typeface;->DEFAULT:Landroid/graphics/Typeface;\n\n    return-object v0\n',
+            )
             p.write_text(new, encoding='utf-8')
             return str(p)
     raise ValueError('TypeFaceUtil.a(Context) not found')
 
 
-SEG = (r'Lcom/oplus/ocs/camera/OplusBlurPreviewHelper;->segInit\(Ljava/lang/String;Ljava/lang/String;'
-       r'Ljava/lang/String;Ljava/lang/String;II\)\[I')
+SEG = (
+    r'Lcom/oplus/ocs/camera/OplusBlurPreviewHelper;->segInit\(Ljava/lang/String;Ljava/lang/String;'
+    r'Ljava/lang/String;Ljava/lang/String;II\)\[I'
+)
 
 
 def camera_blur_seginit_guard(root):
     """Portrait blur dereferences segInit()'s int[] without a null check; treat null as 'no blur'."""
     p, t = _find(root, 'smali*/**/*.smali', '/odm/etc/camera/singleblur/personseg.bin')
     cls = re.search(r'^\.class .*?(L[\w/$]+;)', t, re.M).group(1)
-    pat = (r'(?s)(invoke-virtual/range \{v1 \.\. v7\}, ' + SEG + r'.*?move-result-object v0.*?sput-object v0, '
-           + re.escape(cls) + r'->(\w+):\[I)')
+    pat = (
+        r'(?s)(invoke-virtual/range \{v1 \.\. v7\}, '
+        + SEG
+        + r'.*?move-result-object v0.*?sput-object v0, '
+        + re.escape(cls)
+        + r'->(\w+):\[I)'
+    )
     # registers verified for this build: synchronized e(II)Z holds the monitor in v10, v12 == false
     if 'monitor-enter v10' not in t or 'const/4 v12, 0x0' not in t:
         raise ValueError('blur init register layout changed')
-    t2, n = re.subn(pat, r'\1\n\n    if-nez v0, :cond_los_blur_seginit_ok\n\n    monitor-exit v10\n\n    return v12\n\n    :cond_los_blur_seginit_ok', t, count=1)
+    t2, n = re.subn(
+        pat,
+        r'\1\n\n    if-nez v0, :cond_los_blur_seginit_ok\n\n    monitor-exit v10\n\n    return v12\n\n    :cond_los_blur_seginit_ok',
+        t,
+        count=1,
+    )
     if n != 1:
         raise ValueError('blur init segInit not patched')
     p.write_text(t2, encoding='utf-8')
 
     p2, t = _find(root, 'smali*/**/*.smali', 'initSegForSizeChange, segInit, cost: ')
-    pat = (r'(?s)(invoke-virtual/range \{v3 \.\. v9\}, ' + SEG + r'.*?move-result-object p0.*?sput-object p0, '
-           + re.escape(cls) + r'->\w+:\[I)')
-    t2, n = re.subn(pat, r'\1\n\n    if-nez p0, :cond_los_blur_size_ok\n\n    return-void\n\n    :cond_los_blur_size_ok', t, count=1)
+    pat = (
+        r'(?s)(invoke-virtual/range \{v3 \.\. v9\}, '
+        + SEG
+        + r'.*?move-result-object p0.*?sput-object p0, '
+        + re.escape(cls)
+        + r'->\w+:\[I)'
+    )
+    t2, n = re.subn(
+        pat,
+        r'\1\n\n    if-nez p0, :cond_los_blur_size_ok\n\n    return-void\n\n    :cond_los_blur_size_ok',
+        t,
+        count=1,
+    )
     if n != 1:
         raise ValueError('blur size-change segInit not patched')
     p2.write_text(t2, encoding='utf-8')
@@ -67,7 +95,10 @@ def camera_blur_seginit_guard(root):
 
 def camera_uifirst(root):
     """LineageOS's boot-classpath OplusUIFirstManager lacks setUxThreadValue(IILString;)V."""
-    call = re.compile(r'^\s*invoke-virtual \{[^}]*\}, Lcom/oplus/uifirst/OplusUIFirstManager;->setUxThreadValue\(IILjava/lang/String;\)V\n', re.M)
+    call = re.compile(
+        r'^\s*invoke-virtual \{[^}]*\}, Lcom/oplus/uifirst/OplusUIFirstManager;->setUxThreadValue\(IILjava/lang/String;\)V\n',
+        re.M,
+    )
     hits = []
     for p in Path(root).glob('smali*/**/*.smali'):
         t = p.read_text(encoding='utf-8', errors='ignore')
@@ -85,7 +116,9 @@ def strip_oem_component_permissions(root):
     """Undefined OEM permissions would lock the launcher and other apps out of camera components."""
     m = Path(root) / 'AndroidManifest.xml'
     t = m.read_text(encoding='utf-8')
-    t2, n = re.subn(r'\s+android:permission="(?:oplus|oppo|com\.oplus\.permission|com\.oppo|com\.heytap)[^"]*"', '', t)
+    t2, n = re.subn(
+        r'\s+android:permission="(?:oplus|oppo|com\.oplus\.permission|com\.oppo|com\.heytap)[^"]*"', '', t
+    )
     m.write_text(t2, encoding='utf-8')
     return f'{n} attributes'
 
@@ -113,7 +146,9 @@ def vendor_tag_aliases(root):
             continue
         t2 = t
         for a, b in VENDOR_TAG_ALIASES.items():
-            t2, n = re.subn(r'(const-string(?:/jumbo)? [vp]\d+, )"' + re.escape(a) + '"', r'\1"' + b + '"', t2)
+            t2, n = re.subn(
+                r'(const-string(?:/jumbo)? [vp]\d+, )"' + re.escape(a) + '"', r'\1"' + b + '"', t2
+            )
             total += n
         if t2 != t:
             p.write_text(t2, encoding='utf-8')
@@ -124,11 +159,16 @@ def vendor_tag_aliases(root):
 
 SDK_STATIC_DEFAULTS = (
     '.field private static volatile eagerlyParseMessageSets:Z = false',
-    '.field private static sAlgoExists:Z = false', '.field private static sLibraryLoaded:Z = false',
-    '.field private static sThreadUxMap:Landroid/util/SparseArray; = null', '.field private static sbHasSetUx:Z = false',
-    '.field private static bInit:Z = false', '.field private static sOsenseInit:Z = false',
-    '.field private static sbUnderWaterVideoStatus:Z = false', '.field private static volatile sEnable:Z = false',
-    '.field private static volatile sJNILoadFailed:Z = false', '.field private static volatile sLogEncryptEnable:Z = false',
+    '.field private static sAlgoExists:Z = false',
+    '.field private static sLibraryLoaded:Z = false',
+    '.field private static sThreadUxMap:Landroid/util/SparseArray; = null',
+    '.field private static sbHasSetUx:Z = false',
+    '.field private static bInit:Z = false',
+    '.field private static sOsenseInit:Z = false',
+    '.field private static sbUnderWaterVideoStatus:Z = false',
+    '.field private static volatile sEnable:Z = false',
+    '.field private static volatile sJNILoadFailed:Z = false',
+    '.field private static volatile sLogEncryptEnable:Z = false',
     '.field private static isDebug:Z = false',
 )
 
@@ -141,15 +181,25 @@ def sdk_runtime(root):
         for line in SDK_STATIC_DEFAULTS:
             t2 = t2.replace(line + '\n', line.rsplit(' = ', 1)[0] + '\n')
         if t2 != t:
-            p.write_text(t2, encoding='utf-8'); n += 1
-    p, t = _find(root, 'smali*/com/oplus/ocs/camera/producer/mode/BaseMode.smali', '.method public isSensorModeNeedWait(II)Z')
-    t = _replace_method(t, 'public isSensorModeNeedWait(II)Z', '    .locals 1\n\n    const/4 v0, 0x0\n\n    return v0\n')
+            p.write_text(t2, encoding='utf-8')
+            n += 1
+    p, t = _find(
+        root,
+        'smali*/com/oplus/ocs/camera/producer/mode/BaseMode.smali',
+        '.method public isSensorModeNeedWait(II)Z',
+    )
+    t = _replace_method(
+        t, 'public isSensorModeNeedWait(II)Z', '    .locals 1\n\n    const/4 v0, 0x0\n\n    return v0\n'
+    )
     p.write_text(t, encoding='utf-8')
     return f'{n} static-default files, isSensorModeNeedWait -> false'
 
 
 def sdk_facebeauty_path(root):
-    old, new = '/product/lib64/libApsFaceBeautyPreviewProductJni.so', '/system_ext/lib64/libApsFaceBeautyPreviewProductJni.so'
+    old, new = (
+        '/product/lib64/libApsFaceBeautyPreviewProductJni.so',
+        '/system_ext/lib64/libApsFaceBeautyPreviewProductJni.so',
+    )
     p, t = _find(root, 'smali*/**/*.smali', old)
     p.write_text(t.replace(old, new), encoding='utf-8')
     return str(p.name)
@@ -159,8 +209,10 @@ def sdk_facebeauty_path(root):
 
 APS_STOCK = 'b6669463a2dbdc22d20d0bb1a565ef9f1cc058f5f34c627a8d49971f7c509bec'
 APS_PATCHED = 'fadd66bfe6344294fa0d3055382b1506e8432d01a562849478be82973e5974f8'
-APS_TARGETS = ((0x4C11B, b'libHeifEncoderWrapper.so', b'xibHeifEncoderWrapper.so'),
-               (0x48551, b'libNativeWinBuffExchange.so', b'xibNativeWinBuffExchange.so'))
+APS_TARGETS = (
+    (0x4C11B, b'libHeifEncoderWrapper.so', b'xibHeifEncoderWrapper.so'),
+    (0x48551, b'libNativeWinBuffExchange.so', b'xibNativeWinBuffExchange.so'),
+)
 
 
 def apsclient_force_java_heif(path):
@@ -171,9 +223,9 @@ def apsclient_force_java_heif(path):
     if sha256(b).hexdigest() != APS_STOCK:
         raise ValueError('libAPSClient-cmd-jni.so is not the expected stock build')
     for off, old, new in APS_TARGETS:
-        if bytes(b[off:off + len(old)]) != old:
+        if bytes(b[off : off + len(old)]) != old:
             raise ValueError(f'APS dlopen target mismatch at {off:#x}')
-        b[off:off + len(old)] = new
+        b[off : off + len(old)] = new
     if sha256(b).hexdigest() != APS_PATCHED:
         raise ValueError('patched APS client hash mismatch')
     Path(path).write_bytes(bytes(b))
@@ -185,10 +237,15 @@ def camera_blur_license_path(root):
     /system_ext/etc/camera copy instead (both the existence check and the loader, which
     prefixes '/odm/etc/camera/'), so nothing has to be added to /odm."""
     p, t = _find(root, 'smali*/**/*.smali', '"/odm/etc/camera/singleblur/license_release.license"')
-    t2 = t.replace('"/odm/etc/camera/singleblur/license_release.license"',
-                   '"/system_ext/etc/camera/singleblur/license_release.license"')
-    t2, n = re.subn(r'(const-string [vp]\d+, )"singleblur/license_release\.license"',
-                    r'\1"../../../system_ext/etc/camera/singleblur/license_release.license"', t2)
+    t2 = t.replace(
+        '"/odm/etc/camera/singleblur/license_release.license"',
+        '"/system_ext/etc/camera/singleblur/license_release.license"',
+    )
+    t2, n = re.subn(
+        r'(const-string [vp]\d+, )"singleblur/license_release\.license"',
+        r'\1"../../../system_ext/etc/camera/singleblur/license_release.license"',
+        t2,
+    )
     if t2 == t or n != 1:
         raise ValueError('blur license path not patched')
     p.write_text(t2, encoding='utf-8')
@@ -200,7 +257,10 @@ def camera_defer_ufs_probe(root):
     (KLUFG4LHGC-B0E1) for deferred capture. LineageOS labels that proc node so apps get
     EACCES, and the unguarded read kills the app. Treat the node as absent (= not that part)."""
     p, t = _find(root, 'smali*/qc/*.smali', '"/proc/devinfo/ufs"')
-    pat = re.compile(r'(const-string v1, "/proc/devinfo/ufs"\n.*?invoke-virtual \{v0\}, Ljava/io/File;->exists\(\)Z\n\s*\n?(?:\s*\.line \d+\n)*\s*move-result v1\n(?:\s*\.line \d+\n|\s*\n)*?\s*)if-eqz v1, (:cond_\w+)', re.S)
+    pat = re.compile(
+        r'(const-string v1, "/proc/devinfo/ufs"\n.*?invoke-virtual \{v0\}, Ljava/io/File;->exists\(\)Z\n\s*\n?(?:\s*\.line \d+\n)*\s*move-result v1\n(?:\s*\.line \d+\n|\s*\n)*?\s*)if-eqz v1, (:cond_\w+)',
+        re.S,
+    )
     t2, n = pat.subn(lambda m: m.group(1) + 'goto ' + m.group(2), t, count=1)
     if n != 1:
         raise ValueError('ufs probe not patched')
@@ -214,17 +274,27 @@ def sdk_session_package_tag(root):
     reads it in configure_streams to pick the first-party pipeline, otherwise it configures the
     session as a third-party app. Stock LineageOS cameraserver doesn't, so the SDK sets the tag
     itself (byte string, NUL-terminated like String8) right before building the session params."""
-    p, t = _find(root, 'smali*/com/oplus/ocs/camera/producer/device/Camera2Impl.smali',
-                 'SessionConfiguration;->setSessionParameters')
+    p, t = _find(
+        root,
+        'smali*/com/oplus/ocs/camera/producer/device/Camera2Impl.smali',
+        'SessionConfiguration;->setSessionParameters',
+    )
     cls = 'Lcom/oplus/ocs/camera/producer/device/Camera2Impl;'
     proxy = 'Lcom/oplus/ocs/camera/metadata/parameter/CaptureRequestBuilderProxy;'
-    anchor = (f'    iget-object v5, v0, {cls}->mPreviewBuilder:{proxy}\n\n'
-              f'    invoke-virtual {{v5}}, {proxy}->build()Landroid/hardware/camera2/CaptureRequest;')
+    anchor = (
+        f'    iget-object v5, v0, {cls}->mPreviewBuilder:{proxy}\n\n'
+        f'    invoke-virtual {{v5}}, {proxy}->build()Landroid/hardware/camera2/CaptureRequest;'
+    )
     if t.count(anchor) != 1:
         raise ValueError('session builder anchor not unique')
-    t = t.replace(anchor, (f'    iget-object v5, v0, {cls}->mPreviewBuilder:{proxy}\n\n'
-                           f'    invoke-static {{v5}}, {cls}->losAddPackageTag({proxy})V\n\n'
-                           f'    invoke-virtual {{v5}}, {proxy}->build()Landroid/hardware/camera2/CaptureRequest;'))
+    t = t.replace(
+        anchor,
+        (
+            f'    iget-object v5, v0, {cls}->mPreviewBuilder:{proxy}\n\n'
+            f'    invoke-static {{v5}}, {cls}->losAddPackageTag({proxy})V\n\n'
+            f'    invoke-virtual {{v5}}, {proxy}->build()Landroid/hardware/camera2/CaptureRequest;'
+        ),
+    )
     t += f'''
 .method private static losAddPackageTag({proxy})V
     .locals 4
@@ -263,28 +333,49 @@ def camera_gallery_fallback(root):
     otherwise other galleries keep showing the quick preview JPEG. Adds LosGalleryFallback(+$Fire),
     calls it from GalleryHelper.p(), and reports saved images from CameraManager's defer-save
     handler (the method logging "onCaptureDeferPictureSaved, mbCreated")."""
-    gh, t = _find(root, 'smali*/com/oplus/camera/helper/GalleryHelper.smali',
-                  'invoke-static {v3, v2}, Lcom/oplus/camera/util/Util;->u0(Landroid/app/Activity;Ljava/lang/String;)Z')
+    gh, t = _find(
+        root,
+        'smali*/com/oplus/camera/helper/GalleryHelper.smali',
+        'invoke-static {v3, v2}, Lcom/oplus/camera/util/Util;->u0(Landroid/app/Activity;Ljava/lang/String;)Z',
+    )
     if 'LosGalleryFallback' not in t:
-        i = t.index('invoke-static {v3, v2}, Lcom/oplus/camera/util/Util;->u0(Landroid/app/Activity;Ljava/lang/String;)Z')
+        i = t.index(
+            'invoke-static {v3, v2}, Lcom/oplus/camera/util/Util;->u0(Landroid/app/Activity;Ljava/lang/String;)Z'
+        )
         j = t.index('return v12', i)
         if 'Lmo/r1;->a:Z' not in t[i:j] or 'return' in t[i:j]:
             raise ValueError('GalleryHelper early return not where expected')
-        t = t[:j] + ('iget-object v3, v8, Lcom/oplus/camera/helper/GalleryHelper;->a:Landroid/app/Activity;\n\n'
-                     '    invoke-static {v3, v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->open(Landroid/app/Activity;Lxm/i;)V\n\n'
-                     '    return v12') + t[j + len('return v12'):]
+        t = (
+            t[:j]
+            + (
+                'iget-object v3, v8, Lcom/oplus/camera/helper/GalleryHelper;->a:Landroid/app/Activity;\n\n'
+                '    invoke-static {v3, v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->open(Landroid/app/Activity;Lxm/i;)V\n\n'
+                '    return v12'
+            )
+            + t[j + len('return v12') :]
+        )
         gh.write_text(t, encoding='utf-8')
     for f in ('LosGalleryFallback.smali', 'LosGalleryFallback$Fire.smali'):
         (gh.parent / f).write_text((SMALI_DIR / f).read_text(encoding='utf-8'), encoding='utf-8')
-    cm, t = _find(root, 'smali*/com/oplus/camera/CameraManager.smali', 'Ll6/i8;-><init>(Lcom/oplus/camera/CameraManager;Landroid/net/Uri;')
+    cm, t = _find(
+        root,
+        'smali*/com/oplus/camera/CameraManager.smali',
+        'Ll6/i8;-><init>(Lcom/oplus/camera/CameraManager;Landroid/net/Uri;',
+    )
     if 'LosGalleryFallback;->onFinalSaved' not in t:
-        anchor = ('    invoke-direct/range {v1 .. v7}, Ll6/i8;-><init>(Lcom/oplus/camera/CameraManager;Landroid/net/Uri;'
-                  'Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V\n')
-        if t.count(anchor) != 1 or 'move-object v3, v0' not in t[t.index(anchor) - 400:t.index(anchor)]:
+        anchor = (
+            '    invoke-direct/range {v1 .. v7}, Ll6/i8;-><init>(Lcom/oplus/camera/CameraManager;Landroid/net/Uri;'
+            'Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V\n'
+        )
+        if t.count(anchor) != 1 or 'move-object v3, v0' not in t[t.index(anchor) - 400 : t.index(anchor)]:
             raise ValueError('defer-save anchor changed (uri must be in v0)')
         i = t.index(anchor) + len(anchor)
         k = t.index('\n', t.index('Lm8/c;->C(Ljava/lang/String;Ljava/util/function/Supplier;)V', i)) + 1
-        t = t[:k] + '\n    invoke-static {v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->onFinalSaved(Landroid/net/Uri;)V\n' + t[k:]
+        t = (
+            t[:k]
+            + '\n    invoke-static {v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->onFinalSaved(Landroid/net/Uri;)V\n'
+            + t[k:]
+        )
         cm.write_text(t, encoding='utf-8')
     return gh.name
 
@@ -317,13 +408,16 @@ def camera_disable_oem_components(root):
         tag = m.group(0)
         if 'android:enabled="false"' in tag:
             continue
-        new = tag.replace('android:enabled="true" ', '').replace('<' + m.group(1), '<' + m.group(1) + ' android:enabled="false"', 1)
+        new = tag.replace('android:enabled="true" ', '').replace(
+            '<' + m.group(1), '<' + m.group(1) + ' android:enabled="false"', 1
+        )
         t = t.replace(tag, new, 1)
     p.write_text(t, encoding='utf-8')
     return p.name
 
 
 # ---------------------------------------------------------------- native blobs (bytes, by pattern)
+
 
 def _patch_bytes(path, orig, new, label):
     d = bytearray(Path(path).read_bytes())
@@ -333,7 +427,7 @@ def _patch_bytes(path, orig, new, label):
     if d.count(o) != 1:
         raise ValueError(f'{label}: pattern found {d.count(o)} times')
     i = d.index(o)
-    d[i:i + len(o)] = n
+    d[i : i + len(o)] = n
     Path(path).write_bytes(d)
     return hex(i)
 
@@ -343,7 +437,10 @@ def oemlayer_follow_app_zoom(path):
     flag that makes it ignore ANDROID_CONTROL_ZOOM_RATIO and wait for com.oplus.zoom.target /
     zoom.active, which the app doesn't send on LineageOS -> no viewfinder zoom. Force the flag to 0.
     ldr x9,[x8,#0x320]; ldr w9,[x9,#0x11c] -> mov w9,wzr; str w9,[x8,#0xf4]; str wzr,[x8,#0xf8]"""
-    return _patch_bytes(path, '099141f9291d41b909f500b91ff900b9', '099141f9e9031f2a09f500b91ff900b9', 'oemlayer zoom')
+    return _patch_bytes(
+        path, '099141f9291d41b909f500b91ff900b9', '099141f9e9031f2a09f500b91ff900b9', 'oemlayer zoom'
+    )
+
 
 # Install-time patches of ROM blobs (offlinecamera-service-impl, libAlgoProcess) live in
 # module/customize.sh (fixlib) so they always apply to the exact file on the user's ROM.
@@ -354,6 +451,7 @@ def camera_drop_embedded_libs(root):
     priv-app/OplusCamera/lib/arm64 (shipped next to the APK). The copies inside the APK (lib/) are
     never used; dropping them saves ~46 MB. Keep lib/arm64 in the module in sync with the APK's libs."""
     import shutil
+
     d = Path(root) / 'lib'
     if d.exists():
         shutil.rmtree(d)
@@ -363,10 +461,13 @@ def camera_drop_embedded_libs(root):
 # ---------------------------------------------------------------- props scoped to the camera (v0.32)
 
 SMALI_STUBS_DIR = Path(__file__).parent / 'smali-stubs'
-_SP_METHODS = ['get(Ljava/lang/String;)Ljava/lang/String;',
-               'get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;',
-               'getInt(Ljava/lang/String;I)I', 'getLong(Ljava/lang/String;J)J',
-               'getBoolean(Ljava/lang/String;Z)Z']
+_SP_METHODS = [
+    'get(Ljava/lang/String;)Ljava/lang/String;',
+    'get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;',
+    'getInt(Ljava/lang/String;I)I',
+    'getLong(Ljava/lang/String;J)J',
+    'getBoolean(Ljava/lang/String;Z)Z',
+]
 
 
 def stubs_scoped_props(root):
@@ -404,8 +505,10 @@ def camera_scoped_props(root):
         if '"persist.sys.oplus.anim_level"' not in t and 'Ld3/a;' not in t:
             continue
         if f.as_posix().endswith(('/s3/i.smali', '/d3/a.smali')) and '"android.os.SystemProperties"' in t:
-            t = t.replace('const-string v1, "android.os.SystemProperties"',
-                          'const-string v1, "com.oplus.camera.los.LosProps"')
+            t = t.replace(
+                'const-string v1, "android.os.SystemProperties"',
+                'const-string v1, "com.oplus.camera.los.LosProps"',
+            )
             f.write_text(t, encoding='utf-8')
             done += 1
     if done != 2:
