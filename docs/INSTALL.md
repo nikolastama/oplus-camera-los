@@ -16,8 +16,8 @@
    - makes fixed copies of two ROM libraries and of the camera service (`cameraserver`) inside the module (the ROM files are never touched);
    - snapshots your persistent props and settings so removal can delete only what the camera adds.
 3. Reboot.
-4. **KernelSU → Superuser → ⋮ → Show system apps → `com.oplus.camera` → turn off "Umount modules".**
-   The camera is a system app, so it only appears in the list once system apps are shown, and it is listed by its package name.
+4. **KernelSU → Superuser → ⋮ → Show system apps → Camera → turn off "Umount modules".**
+   The camera is a system app, so it only appears in the list once system apps are shown.
    If "Umount modules" is on for an app, KernelSU hides every module from it. The camera then can't find its own APK and crashes on start. Do the same for your launcher if your default profile unmounts modules (otherwise the launcher can't show the camera icon).
 5. Open **Camera**.
 
