@@ -7,11 +7,20 @@ TS=$(date +%Y%m%d-%H%M%S)
 # Press 1: schedule a snapshot of the live camera session (stream sizes/formats the HAL was given),
 # taken 20 s later while the OnePlus camera is open. Press 2: collect everything.
 SNAP=/data/local/tmp/ocam-session-snapshot.txt
+# Debug settings changed by the first press, with their previous values (restored by the second).
+DBG=/data/local/tmp/ocam-debug-props.txt
+DEBUG_PROPS="persist.camera.aps.core.infoMask persist.camera.aps.core.debugMask persist.camera.aps.core.warningMask
+  persist.vendor.camera.oplus.enableLogging persist.camera.logWarningMask oplus.autotest.camera.debug.forcelog
+  persist.camera.assert.panic persist.sys.assert.panic"
 if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
   touch /data/local/tmp/ocam-snapshot.pending
-  # Turn on the camera app's own processing (APS) logs and the HAL's logs until the next reboot
+  # Turn on the camera app's own processing (APS) logs and the HAL's logs for this debug run
   # (runtime values only; nothing is written to persistent storage), then restart both so they
-  # pick the settings up.
+  # pick the settings up. The previous values are saved and put back by the second press, since
+  # verbose camera logging and raw frame dumps cost battery and storage on every shot.
+  : > "$DBG"
+  for p in $DEBUG_PROPS; do echo "$p=$(getprop "$p")" >> "$DBG"; done
+  echo "logd=$(logcat -g -b main 2>/dev/null | sed -n 's/.*ring buffer is \([0-9]*\) *\([KM]\).*/\1\2/p' | head -1)" >> "$DBG"
   for k in infoMask debugMask warningMask; do resetprop -n persist.camera.aps.core.$k 0xffffffff; done
   resetprop -n persist.vendor.camera.oplus.enableLogging true
   resetprop -n persist.camera.logWarningMask 0xffffffff
@@ -20,7 +29,7 @@ if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
   resetprop -n persist.camera.assert.panic true
   resetprop -n persist.sys.assert.panic true
   # The default 256 KB log buffers hold only ~15 s of a verbose camera session; 16 MB holds
-  # ~15 min. Runtime-only, back to the ROM default on the next boot.
+  # ~15 min. Runtime-only; restored by the second press (or the next boot).
   logcat -G 16M >/dev/null 2>&1
   am force-stop com.oplus.camera >/dev/null 2>&1
   pkill -f camera.provider-service >/dev/null 2>&1
@@ -118,5 +127,22 @@ done
 
 tar -czf "$OUT" -C /data/local/tmp "ocam-debug-$TS" 2>/dev/null
 rm -rf "$W"
+
+# Put the debug settings of the first press back, and restart the camera app and HAL (only when
+# the camera isn't in use) so they stop verbose logging and raw frame dumps right away.
+if [ -f "$DBG" ]; then
+  while IFS='=' read -r p v; do
+    case "$p" in
+      logd) [ -f "$MODDIR/debug" ] || [ -z "$v" ] || logcat -G "$v" >/dev/null 2>&1 ;;
+      *) if [ -n "$v" ]; then resetprop -n "$p" "$v"; else resetprop -d "$p" >/dev/null 2>&1; fi ;;
+    esac
+  done < "$DBG"
+  rm -f "$DBG"
+  if ! dumpsys media.camera 2>/dev/null | grep -q "Device .* is open"; then
+    am force-stop com.oplus.camera >/dev/null 2>&1
+    pkill -f camera.provider-service >/dev/null 2>&1
+  fi
+  echo "Debug logging switched back off."
+fi
 echo "Debug bundle saved: $OUT"
 echo "Delete it when you no longer need it."

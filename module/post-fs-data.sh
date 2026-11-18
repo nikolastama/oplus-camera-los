@@ -11,10 +11,14 @@ if [ -f "$MODDIR/system/bin/cameraserver" ] && [ "$(cat "$MODDIR/.rom_build" 2>/
   rm -f "$MODDIR/system/bin/cameraserver"; rmdir "$MODDIR/system/bin" 2>/dev/null
   sed -i '/^bin\/cameraserver /d' "$MODDIR/.fixed" 2>/dev/null
   echo "$(date) $(rom_build)" > "$MODDIR/rom_updated"
+  rm -f "$MODDIR/.pruned"
 fi
 
-# Clear files of older versions (and the copy dropped above) out of the metamodule's copy.
-prune_mirror "$MODDIR"
+# Clear files of older versions (and the copy dropped above) out of the metamodule's copy. Needed
+# once per install or after the drop above, not on every boot.
+if [ ! -f "$MODDIR/.pruned" ]; then
+  prune_mirror "$MODDIR" && touch "$MODDIR/.pruned"
+fi
 
 # Data dirs the OnePlus camera/APS expect. Each is created only if absent and recorded in the
 # module's own .created list (nothing is written inside them). A directory that already existed
@@ -28,7 +32,8 @@ for spec in /data/system/camera_rus:1047:oplus_camera_rus_file \
   if [ ! -e "$d" ]; then
     mkdir -p "$MODDIR/.created" && mkdir "$d" && touch "$m"
   fi
-  if [ -f "$m" ]; then
+  # (re)label only when needed: a recursive relabel walks every log file in the directory
+  if [ -f "$m" ] && [ "$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')" != "u:object_r:$ctx:s0" ]; then
     chown "$owner:$owner" "$d"; chmod 0777 "$d"
     chcon -R "u:object_r:$ctx:s0" "$d" 2>/dev/null
   fi
@@ -54,5 +59,6 @@ for d in /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_r
     orig=$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')
     case "$orig" in u:object_r:*:s0) mkdir -p "$MODDIR/.relabeled" && echo "$d $orig" > "$r" ;; *) continue ;; esac
   fi
-  chcon -R u:object_r:vendor_camera_data_file:s0 "$d" 2>/dev/null
+  [ "$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')" = u:object_r:vendor_camera_data_file:s0 ] ||
+    chcon -R u:object_r:vendor_camera_data_file:s0 "$d" 2>/dev/null
 done

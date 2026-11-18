@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.36 (lighter in the background)
+- Boot watchdog: reads only the small crash log every 30 s for its 10 minutes, and the full log only when the camera HAL (re)starts, instead of dumping the whole log twice every 30 s.
+- Debug button: the second press puts back the logging settings the first press changed (verbose camera/HAL logs, raw frame dumps, 16 MB log buffers) instead of leaving them on until the next reboot.
+- Boot: data folders are relabelled, and the metamodule copy cleaned, only when needed instead of on every boot.
+
 ## v0.35 (no more hang after a shot)
 - Fix: the shutter could stay busy after a portrait or other multi-frame photo until the app was paused. OnePlus's HAL reuses frames from just before the shutter, so one frame's timestamp goes backwards; stock Android's camera service then drops that frame's buffers and the app waited for the 7th of 7 frames. An install-time fixed copy of the ROM's `cameraserver` returns those buffers, as Android already does for ZSL captures (ARCHITECTURE.md, "Out-of-order frames").
 - The fixed `cameraserver` is tied to the ROM build it was made from: after a LineageOS update the module drops it and asks to be flashed again.

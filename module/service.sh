@@ -23,16 +23,23 @@ esac
 # out of the module so the next boot is back to LineageOS's own camera path, and tell the user.
 L="$MODDIR/system/odm/lib64/hw/camera.oemlayer.v2.so"
 if [ -f "$L" ]; then
-  # check for 10 minutes after boot (covers the first camera launches), every 30 s
-  i=0
+  # check for 10 minutes after boot (covers the first camera launches), every 30 s. Cheap on
+  # purpose: only the small crash buffer is read each time; the large main buffer only when the
+  # camera HAL has (re)started and loaded the layer.
+  i=0; PP=
   while [ $i -lt 20 ] && [ -f "$L" ]; do
     sleep 30; i=$((i+1))
     # distinct crashed processes whose backtrace runs through the layer or its private libs
-    N=$(logcat -d -b crash,main 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*(camera\.oemlayer|libsensorbridg2)" | awk '{print $3}' | sort -u | wc -l)
-    BAD=$(logcat -d 2>/dev/null | grep -cE "oemlayer\.v2\.so.*(dlopen failed|cannot locate symbol)")
+    N=$(logcat -d -b crash 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*(camera\.oemlayer|libsensorbridg2)" | awk '{print $3}' | sort -u | wc -l)
+    P=$(pidof vendor.qti.camera.provider-service_64); BAD=0
+    if [ "$P" != "$PP" ]; then
+      PP=$P
+      BAD=$(logcat -d -b main 2>/dev/null | grep -cE "oemlayer\.v2\.so.*(dlopen failed|cannot locate symbol)")
+    fi
     if [ "${N:-0}" -ge 2 ] || [ "${BAD:-0}" -ge 1 ]; then
       rm -f "$L" "$MODDIR/system/odm/lib64/camera.oemlayer.v2.so" "$MODDIR/system/odm/lib64/libsensorbridg2.so" "$MODDIR/system/odm/lib64/camera.oemlayer.uilaye2.so"
       echo "$(date) provider_crashes=$N load_errors=$BAD" > "$MODDIR/oemlayer_disabled"
+      rm -f "$MODDIR/.pruned"   # next boot removes the layer from the metamodule's copy too
       cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los \
         "The OnePlus camera layer made the camera HAL crash, so it has been switched off. Reboot to restore all cameras." >/dev/null 2>&1
     fi

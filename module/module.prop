@@ -1,6 +1,6 @@
 id=oplus_camera_los
 name=OnePlus Camera for LineageOS (OnePlus 15)
-version=v0.35 (OxygenOS 16.0.10.601)
-versionCode=36
+version=v0.36 (OxygenOS 16.0.10.601)
+versionCode=37
 author=Nikola
 description=Stock OnePlus 15 camera on LineageOS 24 for infiniti. Removing the module removes the app, its data, its props and its policy.
