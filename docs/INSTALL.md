@@ -13,7 +13,7 @@
    The installer:
    - verifies the device, the ROM and that the OnePlus HAL libraries it needs are present;
    - installs the OnePlus camera layer only if all of its dependencies exist on the ROM;
-   - makes fixed copies of two ROM libraries inside the module (the ROM files are never touched);
+   - makes fixed copies of two ROM libraries and of the camera service (`cameraserver`) inside the module (the ROM files are never touched);
    - snapshots your persistent props and settings so removal can delete only what the camera adds.
 3. Reboot.
 4. **KernelSU → Superuser → Camera (`com.oplus.camera`) → turn off "Umount modules".**
@@ -24,7 +24,9 @@ Zygisk/denylist tools (Zygisk Next, HMA, etc.) can also hide modules. Keep the c
 
 ## Update
 
-Flash the new zip over the installed one and reboot. Your camera settings are kept. The install also clears out any files from older versions that the metamodule still has in its own copy of the module (see ARCHITECTURE.md, "Metamodule copy").
+**After a LineageOS update**, the module switches its camera service fix off by itself (it was made from the previous build's `cameraserver`) and shows a notification. Flash the module again to restore it; until then some multi-frame shots can leave the shutter busy.
+
+**Module update:** flash the new zip over the installed one and reboot. Your camera settings are kept. The install also clears out any files from older versions that the metamodule still has in its own copy of the module (see ARCHITECTURE.md, "Metamodule copy").
 
 The app is signed with the module key, so it updates in place. Changing the signing key (for example by building with your own key) means removing the old version first.
 
@@ -43,7 +45,7 @@ All of it disappears with the module:
 
 | Area | Change |
 |---|---|
-| Files | New files on `/system_ext` (app, SDK, libraries, configs) and `/odm` (OnePlus camera layer). Two ROM libraries are replaced by fixed copies inside the module (`/odm/lib64/libAlgoProcess.so` overlaid; the offline camera service shadowed via `/odm/lib64`). Nothing under `/vendor`. |
+| Files | New files on `/system_ext` (app, SDK, libraries, configs) and `/odm` (OnePlus camera layer). Three ROM files are replaced by fixed copies inside the module: `/odm/lib64/libAlgoProcess.so` and `/system/bin/cameraserver` overlaid, the offline camera service shadowed via `/odm/lib64`. Nothing under `/vendor`. |
 | Properties | One system-wide: a larger camera result queue (`ro.vendor.camera.res.fmq.size`). The OnePlus camera's own props are answered inside its process. `service.sh` adds `com.oplus.camera` to `persist.vendor.camera.privapp.list` (in memory; LineageOS's camera service applies it only to that package). Larger log buffers (16 MB, until the next reboot) only in debug mode: the Action button's first press, or `touch …/oplus_camera_los/debug` for every boot. |
 | SELinux | `sepolicy.rule`: a few rules for the camera app's data dirs, the DSP library watch, and the camera HAL reading system props. |
 | Data | `/data/system/camera_rus`, `/data/vendor/camera_rus` (created if absent); `/data/vendor/cam_alog`, `camera_process` and `camera_remote_dump` relabelled for the camera (original labels saved and restored on removal). |

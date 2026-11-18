@@ -62,6 +62,10 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "offline service @0x1b394: $(od -An -tx1 -j 111508 -N 4 "$F" | tr -d ' \n') (1b2f40b9 = fixed, 1b1f40b9 = stock)"
   F=/odm/lib64/libAlgoProcess.so
   echo "libAlgoProcess @0x1c9f38: $(od -An -tx1 -j 1875768 -N 4 "$F" | tr -d ' \n') (e93341b9 = fixed, e97740f9 = stock)"
+  F=/system/bin/cameraserver
+  echo "cameraserver @0x230948: $(od -An -tx1 -j 2296136 -N 4 "$F" | tr -d ' \n') (1f2003d5 = fixed, e82300b9 = stock)"
+  [ -f "$MODDIR/rom_updated.notified" ] && echo "!! camera service fix dropped after a ROM update: $(cat "$MODDIR/rom_updated.notified")"
+  ls -lZ /system/bin/cameraserver
   ls -lZ /odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /odm/lib64/libAlgoProcess.so 2>&1
   grep -h "offlinecamera-service-impl\|camera.oemlayer" /proc/$(pidof vendor.qti.camera.provider-service_64 | cut -d" " -f1)/maps 2>/dev/null | awk '{print $6}' | sort -u
 } > "$W/summary.txt" 2>&1
@@ -75,7 +79,8 @@ getprop > "$W/getprop.txt" 2>&1
 ls -la /data/tombstones > "$W/tombstones-list.txt" 2>&1
 # newest few tombstones (text form), they carry full register/stack info for native crashes
 for t in $(ls -t /data/tombstones/tombstone_[0-9][0-9] 2>/dev/null | head -4); do cp "$t" "$W/" 2>/dev/null; done
-# the device's own camera service binaries, unmodified, so fixes can be checked against the exact build
+# the device's own camera service binaries, so fixes can be checked against the exact build
+# (cameraserver is the module's fixed copy while that fix is active, see summary.txt)
 mkdir -p "$W/bin"
 for f in /system/lib64/libcameraservice.so /system/bin/cameraserver /system/lib64/libcamera_client.so \
          /system/lib64/libcamera2ndk.so /system/lib64/libcamera_metadata.so; do

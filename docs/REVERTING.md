@@ -97,6 +97,7 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 |---|---|---|
 | Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `981a40f9e2031faa1b1f40b9000f40b9` → `…1b2f40b9…` |
 | Camera processing library | `/odm/lib64/libAlgoProcess.so` | see the two hex strings at the `fixlib` call |
+| Camera service | `/system/bin/cameraserver` | `…e82300b9…` (`str w8,[sp,#0x20]`) → `…1f2003d5…` (`nop`) |
 
 ## 4b. Isolation (v0.32)
 

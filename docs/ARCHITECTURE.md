@@ -82,6 +82,12 @@ LineageOS's open-source snapalloc lays out the private handle differently from O
 
 AOSP's `AHardwareBuffer_lockPlanes` only returns one plane for Qualcomm's `YCbCr_420_P010_VENUS`, while OxygenOS's framework returns three. `libAlgoProcess` took the chroma plane from plane 1 and crashed in HDR. The fix computes the chroma plane the way the allocator lays it out.
 
+## Out-of-order frames in multi-frame shots
+
+For portrait and other multi-frame shots (7 frames per camera), OnePlus's HAL builds part of the burst from frames it captured just before the shutter, re-stamped a few nanoseconds after the original (`80319044658` → `80319044667`). Their timestamps are older than the frame returned before them. Stock Android's `Camera3Stream::returnBuffer` marks such a buffer as an error (`timestamp … is not increasing`) unless the request is a ZSL still capture or a reprocess, so the app received 6 of 7 frames (`onCaptureBufferLost`), and its processing stage waited up to 20 s for the 7th: the shutter stayed busy until the app was paused. The install-time `cameraserver` fix keeps the warning but returns the buffer normally, as Android does for ZSL captures. Other apps' sessions run on Qualcomm's stock path, which doesn't produce out-of-order timestamps, so nothing changes for them.
+
+The fixed copy is made from the installed ROM's own `cameraserver` and is only valid for that build. `post-fs-data.sh` compares the ROM build recorded at install (`.rom_build`, from `/system/build.prop`) with the current one and drops the copy after a LineageOS update; `service.sh` then posts a notification to flash the module again.
+
 ## Watchdog
 
 `service.sh` watches the first 10 minutes after boot. If two or more camera-HAL crashes run through the OnePlus layer, or the layer fails to load, it removes the layer from the module and posts a notification. The next boot then falls back to LineageOS's own camera path.

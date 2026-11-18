@@ -4,7 +4,16 @@ MODDIR=${0%/*}
 
 . "$MODDIR/common.sh"
 
-# Clear files of older versions out of the metamodule's copy of this module.
+# The fixed camera service copy belongs to the ROM build it was made from. After a LineageOS update
+# it would shadow the new build's cameraserver, so drop it (the stock camera service is used until
+# the module is flashed again) and let service.sh tell the user.
+if [ -f "$MODDIR/system/bin/cameraserver" ] && [ "$(cat "$MODDIR/.rom_build" 2>/dev/null)" != "$(rom_build)" ]; then
+  rm -f "$MODDIR/system/bin/cameraserver"; rmdir "$MODDIR/system/bin" 2>/dev/null
+  sed -i '/^bin\/cameraserver /d' "$MODDIR/.fixed" 2>/dev/null
+  echo "$(date) $(rom_build)" > "$MODDIR/rom_updated"
+fi
+
+# Clear files of older versions (and the copy dropped above) out of the metamodule's copy.
 prune_mirror "$MODDIR"
 
 # Data dirs the OnePlus camera/APS expect. Each is created only if absent and recorded in the

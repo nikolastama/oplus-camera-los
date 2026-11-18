@@ -44,6 +44,7 @@ The module depends on these parts of the ROM. Check each after LineageOS changes
 | `ro.hardware.camera=oemlayer.v2` set by the device tree | installer: "ro.hardware.camera is not oemlayer.v2" (layer not installed) | Check `device/oneplus/infiniti`. Without it the layer can't be loaded. |
 | Layer dependencies present in `/vendor`/`/odm` (list in `customize.sh`) | installer: "OnePlus camera layer NOT installed, missing: …" | Ship the missing library on `/odm/lib64`, renamed if LineageOS has an incompatible one with the same name. |
 | LineageOS starts shipping `camera.oemlayer.v2.so` itself | installer: "This ROM ships the OnePlus camera layer itself" | Our layer is skipped automatically; check the wrapper is still needed. |
+| `cameraserver` changes (every LineageOS build) | after the update: notification "LineageOS was updated…"; on reflash: "Camera service: … fix applied" or "expected code not found" | Normally nothing: flash the module again. If the code moved, find the `"… is not increasing"` log call in `Camera3Stream::returnBuffer` and update the pattern and offset in `customize.sh`. |
 | `offlinecamera-service-impl.so` / `libAlgoProcess.so` change | installer: "… expected code not found, fix not applied" | Re-derive the fix (PATCHES.md, install-time fixes): find the same instruction sequence in the new file and update the pattern and offset in `customize.sh`. Without the fixes: black photos / HDR crash. |
 | snapalloc handle layout | photos black again even though the fix applied | Re-check the width offset in the snapalloc private handle. |
 | `charger` / `sensorservice` AIDL versions | layer fails to load (`dlopen failed`, watchdog notification) | Adjust the DT_NEEDED version edit in `binpatches.json`. |
@@ -52,7 +53,7 @@ The module depends on these parts of the ROM. Check each after LineageOS changes
 
 ## Test checklist (each release)
 
-- [ ] Fresh install on a clean ROM, reboot: camera opens, Action-button bundle shows the layer's 5 files, no `/vendor` overlay, `library fixes` both applied.
+- [ ] Fresh install on a clean ROM, reboot: camera opens, Action-button bundle shows the layer's 5 files, no `/vendor` overlay, `library fixes` all three applied (`cameraserver @0x230948: 1f2003d5`), both applied.
 - [ ] Update over the previous version: same as above; `metamodule copy` lists only `odm` and `system_ext`.
 - [ ] Photo in auto mode at each zoom preset, and pinch zoom; the thumbnail opens the final (sharp) image.
 - [ ] Portrait, night, video (1080p/4K), front camera, mode switching.

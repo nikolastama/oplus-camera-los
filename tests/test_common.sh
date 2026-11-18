@@ -29,4 +29,19 @@ check "current files kept"        '[ -f "$C/odm/lib64/x" ] && [ -f "$C/system/sy
 check "symlinks kept"             '[ -L "$C/system/odm" ]'
 check "module itself untouched"   '[ -f "$T/mod/system/keep" ] && [ -f "$T/mod/system/odm/lib64/x" ]'
 check "marker names"              '[ "$(marker /data/vendor/cam_alog)" = _data_vendor_cam_alog ]'
+
+# post-fs-data.sh: the fixed camera service copy is dropped after a ROM update, and only then
+GUARD=$(sed -n '/^if \[ -f "\$MODDIR\/system\/bin\/cameraserver" \]/,/^fi$/p' "$REPO/module/post-fs-data.sh")
+[ -n "$GUARD" ] || { echo "FAIL guard block not found in post-fs-data.sh"; exit 1; }
+MODDIR="$T/inst"; mkdir -p "$MODDIR/system/bin" "$MODDIR/system/odm"
+touch "$MODDIR/system/bin/cameraserver"
+printf 'bin/cameraserver u:object_r:cameraserver_exec:s0\nodm/lib64/libAlgoProcess.so x\n' > "$MODDIR/.fixed"
+rom_build() { echo "build-A"; }
+echo "build-A" > "$MODDIR/.rom_build"
+eval "$GUARD"
+check "same build: copy kept"     '[ -f "$MODDIR/system/bin/cameraserver" ] && [ ! -e "$MODDIR/rom_updated" ]'
+rom_build() { echo "build-B"; }
+eval "$GUARD"
+check "new build: copy dropped"   '[ ! -e "$MODDIR/system/bin" ] && [ -f "$MODDIR/rom_updated" ]'
+check "new build: other fixes kept" '! grep -q "^bin/" "$MODDIR/.fixed" && grep -q "^odm/" "$MODDIR/.fixed"'
 exit $fail

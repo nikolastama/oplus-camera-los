@@ -9,6 +9,10 @@ INSTALLED=$MODULES/$MODID
 # where metamodules keep their own copy of each module's files
 METAMODULE_MNTS="/data/adb/metamodule/mnt $MODULES/meta-overlayfs/mnt $MODULES/meta-mountify/mnt"
 
+# The ROM build, read from the file (runtime props can be spoofed). A fixed copy of a /system file
+# is only valid for the build it was made from.
+rom_build() { grep -hE '^ro\.build\.(fingerprint|date\.utc)=' /system/build.prop 2>/dev/null | sort | tr '\n' ' '; }
+
 # File name that records a /data path in .created/ and .relabeled/: /data/vendor/x -> _data_vendor_x
 marker() { echo "$1" | tr / _; }
 

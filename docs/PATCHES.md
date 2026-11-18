@@ -57,6 +57,7 @@ These patch the **user's own ROM file** into a copy inside the module, so they a
 |---|---|
 | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` → copy at `/odm/lib64/` (shadows by search order) | `ldr w27,[x24,#0x1c]` → `#0x2c`: read the buffer width where snapalloc keeps it (black photos otherwise). Pattern `981a40f9e2031faa1b1f40b9000f40b9`, expected offset 111500. |
 | `/odm/lib64/libAlgoProcess.so` (overlaid) | P010_VENUS chroma plane = luma base + stride × align(height, 32), chroma stride = luma stride (HDR crash otherwise). Pattern in `customize.sh`, expected offset 1875764. |
+| `/system/bin/cameraserver` (overlaid) | `Camera3Stream::returnBuffer` no longer turns a buffer into an error when its timestamp is older than the stream's previous one: `str w8,[sp,#0x20]` (`b.status = CAMERA_BUFFER_STATUS_ERROR`) → `nop`, the warning is still logged. Stock Android already allows this for ZSL captures; OnePlus's multi-frame shots reuse pre-shutter frames, so one of 7 frames was dropped and the app hung after the shot (ARCHITECTURE.md). Pattern `28008052e82300b9790240f909088652752e01f9`, expected offset 2296132. Valid for one ROM build: `post-fs-data.sh` drops the copy after a LineageOS update. |
 
 ## Framework stubs: `prebuilt/oplus-camera-stubs.jar`
 

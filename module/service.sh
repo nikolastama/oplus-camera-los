@@ -8,6 +8,11 @@ until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
 # $MODDIR/debug to get 16 MB log buffers, so a camera failure isn't pushed out of the log before
 # the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
 [ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
+if [ -f "$MODDIR/rom_updated" ]; then
+  cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los_rom \
+    "LineageOS was updated, so the module's camera service fix was switched off. Flash the module again to restore it (the camera can hang after some shots until then)." >/dev/null 2>&1
+  mv -f "$MODDIR/rom_updated" "$MODDIR/rom_updated.notified"
+fi
 CUR=$(getprop persist.vendor.camera.privapp.list)
 case ",$CUR," in
   *,com.oplus.camera,*) ;;
