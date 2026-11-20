@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.37 (stable: v0.37-beta to beta3)
+Everything from the three betas below, unchanged since v0.37-beta3.
+
 ## v0.37-beta3 (OnePlus modes on camera 2 stay on the OnePlus layer)
 - Some OnePlus modes open camera 2 (a second ID of the main rear sensor) with standard-mode sessions only. beta2's rule (a device that ran a OnePlus mode stays on the layer) never applied there, so those sessions ran on Qualcomm's HAL without OnePlus processing (seen in the beta2 debug bundle). The wrapper now also recognises the OnePlus camera by its own `com.oplus.*` session settings, which other apps don't set, and logs which ones a standard-mode session carried. Host test added.
 
