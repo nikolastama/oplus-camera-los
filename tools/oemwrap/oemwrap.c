@@ -61,6 +61,7 @@ int append_camera_metadata(camera_metadata_t *dst, const camera_metadata_t *src)
 int add_camera_metadata_entry(camera_metadata_t *, uint32_t tag, const void *data, size_t count);
 int find_camera_metadata_ro_entry(const camera_metadata_t *, uint32_t tag, camera_metadata_ro_entry_t *);
 int find_camera_metadata_entry(camera_metadata_t *, uint32_t tag, camera_metadata_ro_entry_t *);
+int get_camera_metadata_ro_entry(const camera_metadata_t *, size_t index, camera_metadata_ro_entry_t *);
 camera_metadata_t *clone_camera_metadata(const camera_metadata_t *);
 size_t get_camera_metadata_entry_count(const camera_metadata_t *);
 size_t get_camera_metadata_data_count(const camera_metadata_t *);
@@ -600,14 +601,46 @@ static int switch_backend(proxy_t *p, int oem) {
     return r;
 }
 
+/* Does a session carry OnePlus settings? The OnePlus camera puts its own com.oplus.* keys into
+ * every session (those the HAL declares as session keys reach it through LineageOS's camera
+ * service); other apps don't know them. Returns how many, and for a standard-mode session logs
+ * which, so a debug bundle shows what the app sent. */
+static int oplus_settings(const proxy_t *p, const camera3_stream_configuration_t *cfg) {
+    const camera_metadata_t *m = cfg->session_parameters;
+    find_pkg_tag();
+    if (!m || g_pkg_tag_state != 1 || !g_vtops.get_section_name || !g_vtops.get_tag_name) return 0;
+    char names[160];
+    int n = 0, len = 0;
+    size_t count = get_camera_metadata_entry_count(m);
+    for (size_t i = 0; i < count && i < 256; i++) {
+        camera_metadata_ro_entry_t e;
+        if (get_camera_metadata_ro_entry(m, i, &e) != 0 || e.tag < 0x80000000u) continue;
+        const char *sec = g_vtops.get_section_name(&g_vtops, e.tag);
+        if (!sec || sec[0] != 'c' || sec[1] != 'o' || sec[2] != 'm' || sec[3] != '.' || sec[4] != 'o' ||
+            sec[5] != 'p' || sec[6] != 'l' || sec[7] != 'u' || sec[8] != 's')
+            continue;
+        const char *t = g_vtops.get_tag_name(&g_vtops, e.tag);
+        for (int k = 0; n < 6 && t && t[k] && len < (int)sizeof(names) - 3; k++) names[len++] = t[k];
+        if (n < 6 && len < (int)sizeof(names) - 2) names[len++] = ' ';
+        n++;
+    }
+    names[len] = 0;
+    if (cfg->operation_mode < 0x8000)
+        __android_log_print(LOG_I, TAG, "camera %s: op mode 0x%x session, OnePlus settings: %d %s", p->id,
+                            cfg->operation_mode, n, n ? names : "");
+    return n;
+}
+
 /* A camera device is opened by one client. Once it has run a session in a OnePlus mode, it belongs
  * to the OnePlus camera, which also configures short standard-mode sessions while switching modes
  * (op mode 0 between two OnePlus modes). Those stay on the OnePlus layer, as on OxygenOS, instead of
- * closing and reopening the camera twice per mode switch. Other apps open their own devices and
- * never use OnePlus modes, so they are still moved to Qualcomm's HAL. */
+ * closing and reopening the camera twice per mode switch. Some OnePlus modes use only standard
+ * sessions on a camera (seen on camera 2); those are recognised by their OnePlus settings. Other
+ * apps open their own devices and use neither, so they are still moved to Qualcomm's HAL. */
 static int proxy_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
     proxy_t *p = (proxy_t *)dev;
-    if (cfg && cfg->operation_mode >= 0x8000) p->oplus_owned = 1;
+    if (cfg && (cfg->operation_mode >= 0x8000 || (routing_enabled() && oplus_settings(p, cfg) > 0)))
+        p->oplus_owned = 1;
     int oem = !cfg || p->oplus_owned || !routing_enabled();
     if (oem != p->is_oem) {
         int r = switch_backend(p, oem);

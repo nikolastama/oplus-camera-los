@@ -43,6 +43,11 @@ static int find_any(const camera_metadata_t *m, unsigned t, ro_entry_t *e) {
 }
 int find_camera_metadata_ro_entry(const camera_metadata_t *m, uint32_t t, ro_entry_t *e) { return find_any(m, t, e); }
 int find_camera_metadata_entry(camera_metadata_t *m, uint32_t t, ro_entry_t *e) { return find_any(m, t, e); }
+int get_camera_metadata_ro_entry(const camera_metadata_t *m, size_t i, ro_entry_t *e) {
+    if ((int)i >= m->n) return -2;
+    e->tag = m->e[i].tag; e->count = 1; e->index = i; e->data = &m->e[i].v;
+    return 0;
+}
 size_t get_camera_metadata_entry_count(const camera_metadata_t *m) { return m->n; }
 size_t get_camera_metadata_data_count(const camera_metadata_t *m) { (void)m; return 0; }
 int get_camera_metadata_tag_type(uint32_t t) { (void)t; return 0; }
@@ -163,6 +168,14 @@ static int configure(struct hw_device_t *d, uint32_t mode) {
     camera3_device_t *cd = (camera3_device_t *)d;
     return cd->ops->configure_streams(cd, &c);
 }
+static int configure_with(struct hw_device_t *d, uint32_t mode, const camera_metadata_t *sp) {
+    camera3_stream_configuration_t c = {0, 0, mode, sp};
+    camera3_device_t *cd = (camera3_device_t *)d;
+    return cd->ops->configure_streams(cd, &c);
+}
+/* fake vendor tags: 0x80010000.. in section com.oplus, 0x80020000.. in org.codeaurora */
+static const char *vt_section(const struct vendor_tag_ops *o, uint32_t t) { (void)o; return (t >> 16) == 0x8001 ? "com.oplus" : "org.codeaurora"; }
+static const char *vt_name(const struct vendor_tag_ops *o, uint32_t t) { (void)o; return (t >> 16) == 0x8001 ? "original.zoomRatio" : "other"; }
 static int is_oem_backend(struct hw_device_t *d) { return ((fake_dev_t *)((proxy_t *)d)->backend)->oem; }
 
 int main(void) {
@@ -293,6 +306,26 @@ int main(void) {
           g_opens_oem, g_opens_camx, g_closes);
     d->close(d);
     CHECK(g_configs == 5, "configures not forwarded (%d)", g_configs);
+
+    /* 14. a OnePlus mode that uses only standard sessions (camera 2): recognised by its com.oplus
+     *     session settings and kept on the layer; a standard session with other vendor tags moves */
+    g_pkg_tag_state = 1; g_pkg_tag = 0x80010001;
+    g_vtops.get_section_name = vt_section; g_vtops.get_tag_name = vt_name;
+    camera_metadata_t sp_oplus = {0}, sp_other = {0};
+    sp_oplus.n = 2; sp_oplus.e[0].tag = 65541; sp_oplus.e[1].tag = 0x80010007;
+    sp_other.n = 2; sp_other.e[0].tag = 65541; sp_other.e[1].tag = 0x80020003;
+    d = 0; g_opens_oem = g_opens_camx = g_closes = 0;
+    CHECK(wrap_open(0, "2", &d) == 0 && d, "open failed");
+    ((camera3_device_t *)d)->ops->initialize((camera3_device_t *)d, &g_prov);
+    CHECK(configure_with(d, 0, &sp_oplus) == 0 && is_oem_backend(d), "OnePlus standard session should stay on the layer");
+    CHECK(configure_with(d, 0, 0) == 0 && is_oem_backend(d), "and stay there for the rest of the open");
+    CHECK(g_opens_camx == 0 && g_closes == 0, "camera was reopened (camx %d, closes %d)", g_opens_camx, g_closes);
+    d->close(d);
+    d = 0; g_opens_oem = g_opens_camx = g_closes = 0;
+    CHECK(wrap_open(0, "2", &d) == 0 && d, "open failed");
+    ((camera3_device_t *)d)->ops->initialize((camera3_device_t *)d, &g_prov);
+    CHECK(configure_with(d, 0, &sp_other) == 0 && !is_oem_backend(d), "a session without OnePlus settings should move");
+    d->close(d);
 
     CHECK(g_live_meta == 0, "metadata leaked at end (%d)", g_live_meta);
     if (failures) { printf("%d check(s) failed\n", failures); return 1; }

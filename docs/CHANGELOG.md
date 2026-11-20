@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.37-beta3 (OnePlus modes on camera 2 stay on the OnePlus layer)
+- Some OnePlus modes open camera 2 (a second ID of the main rear sensor) with standard-mode sessions only. beta2's rule (a device that ran a OnePlus mode stays on the layer) never applied there, so those sessions ran on Qualcomm's HAL without OnePlus processing (seen in the beta2 debug bundle). The wrapper now also recognises the OnePlus camera by its own `com.oplus.*` session settings, which other apps don't set, and logs which ones a standard-mode session carried. Host test added.
+
 ## v0.37-beta2 (faster mode switches, self-test fixes)
 - Mode switches: the OnePlus camera configures a short standard-mode session (op mode 0) between two of its own modes. The wrapper took that for another app and moved the camera to Qualcomm's HAL and back each time, closing and reopening the camera twice per switch (about 0.4 s, seen in the v0.37-beta debug bundle; the same since v0.32). A device that has run a OnePlus-mode session now stays on the OnePlus layer until it is closed; other apps open their own devices and are still moved. Host test added.
 - Self-test: waits until the phone has finished start-up (3 minutes, no app compiling). The v0.37-beta report ran during the one-time precompile.
