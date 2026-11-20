@@ -16,8 +16,9 @@
  * parameters if absent, then calls the original.
  *
  * Isolation (v0.32): every camera device the provider opens is a small proxy. A device starts on
- * the OnePlus layer, as before. When a session is configured in a standard operation mode (any
- * app other than the OnePlus camera), the proxy closes that device and reopens the camera
+ * the OnePlus layer, as before. When a session is configured in a standard operation mode on a
+ * device that hasn't run a OnePlus-mode session (any app other than the OnePlus camera), the
+ * proxy closes that device and reopens the camera
  * directly on Qualcomm's HAL (camera.qcom), the path LineageOS uses without this module, and
  * clears the OnePlus callbacks the layer registered in the HAL while no OnePlus session is open.
  * Third-party apps therefore never run through OnePlus's request pipeline. Disable with
@@ -152,6 +153,7 @@ typedef struct proxy {
     void *ops[OPS_SLOTS];
     const void *cb;                /* camera3_callback_ops given to initialize() */
     int is_oem, initialized;
+    int oplus_owned;               /* this open ran a OnePlus-mode session (see proxy_configure) */
     char id[16];
     camera_metadata_t *session_params; /* our copy with the package tag; freed on the next
                                           configure or on close */
@@ -598,9 +600,15 @@ static int switch_backend(proxy_t *p, int oem) {
     return r;
 }
 
+/* A camera device is opened by one client. Once it has run a session in a OnePlus mode, it belongs
+ * to the OnePlus camera, which also configures short standard-mode sessions while switching modes
+ * (op mode 0 between two OnePlus modes). Those stay on the OnePlus layer, as on OxygenOS, instead of
+ * closing and reopening the camera twice per mode switch. Other apps open their own devices and
+ * never use OnePlus modes, so they are still moved to Qualcomm's HAL. */
 static int proxy_configure(const struct camera3_device *dev, camera3_stream_configuration_t *cfg) {
     proxy_t *p = (proxy_t *)dev;
-    int oem = !cfg || cfg->operation_mode >= 0x8000 || !routing_enabled();
+    if (cfg && cfg->operation_mode >= 0x8000) p->oplus_owned = 1;
+    int oem = !cfg || p->oplus_owned || !routing_enabled();
     if (oem != p->is_oem) {
         int r = switch_backend(p, oem);
         if (r) return r;

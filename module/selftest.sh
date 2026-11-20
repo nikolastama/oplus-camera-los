@@ -33,12 +33,25 @@ wait_new() {  # <before list> <pattern> <seconds>
   return 1
 }
 shutter() { input keyevent KEYCODE_VOLUME_DOWN; }
+# press the shutter, and again every 3 s while nothing is saved (the app ignores the key while it
+# is still busy with the previous shot); prints "<file> <seconds>" once a photo is saved
+shoot_until_saved() {  # <before list> <seconds>
+  _s=0
+  while [ $_s -lt "$2" ]; do
+    [ $((_s % 3)) -eq 0 ] && shutter
+    _n=$(media_list | comm -13 "$1" - | grep -iE '\.(jpe?g|heic|heif)$' | grep -v '\.pending' | tail -1)
+    [ -n "$_n" ] && { echo "$_n $_s"; return 0; }
+    sleep 1; _s=$((_s + 1))
+  done
+  return 1
+}
 camera_open() { dumpsys media.camera 2>/dev/null | grep -q "Device .* is open"; }
 log_since() { logcat -d -b "${2:-all}" -v threadtime -T "$1" 2>/dev/null; }
 
 : > "$REPORT"
 say "OnePlus Camera self-test $(grep ^version= "$MODDIR/module.prop" | cut -d= -f2), $(date)"
-say "ROM $(getprop ro.lineage.version)"
+ROMV=$(getprop ro.lineage.display.version)
+say "ROM ${ROMV:+$ROMV, }build $(getprop ro.build.display.id) ($(getprop ro.build.version.incremental))"
 say ""
 
 # ---- preconditions
@@ -48,11 +61,21 @@ fi
 if camera_open; then
   say "Another app is using the camera. Close it and try again. Nothing was tested."; rm -rf "$W"; exit 1
 fi
+# Right after boot Android is still compiling apps (and the module precompiles the camera once,
+# a minute after boot): shots are slow then and the results aren't meaningful.
+if [ "$(cut -d. -f1 /proc/uptime)" -lt 180 ] || pidof dex2oat64 dex2oat >/dev/null 2>&1; then
+  say "The phone is still finishing start-up (compiling apps). Try again in a few minutes. Nothing was tested."
+  rm -rf "$W"; exit 1
+fi
 if [ -z "$(pm path $PKG 2>/dev/null)" ]; then
   say "The OnePlus camera isn't installed (reboot after installing the module)."; rm -rf "$W"; exit 1
 fi
 say "Leave the phone still and pointed at something (a person for the portrait shot) for about 2 minutes."
 say ""
+# Keep the whole test in the log (the default 256 KB holds ~15 s of a camera session); the full
+# log of the test is saved next to the report, then the buffer size is put back.
+LOGD=$(logcat -g -b main 2>/dev/null | sed -n 's/.*ring buffer is \([0-9]*\) *\([KM]\).*/\1\2/p' | head -1)
+logcat -G 16M >/dev/null 2>&1
 START=$(date '+%m-%d %H:%M:%S.000')
 P0=$(pidof $PROVIDER)
 touch "$W/start"
@@ -84,12 +107,11 @@ if F=$(wait_new "$W/b2" '\.(jpe?g|heic|heif)$' 25); then
 else
   result FAIL "portrait photo: nothing saved within 25 s"
 fi
-sleep 2
-media_list > "$W/b2b"; shutter
-if F=$(wait_new "$W/b2b" '\.(jpe?g|heic|heif)$' 25); then
-  result PASS "second portrait photo right after the first (shutter ready again): $F"
+media_list > "$W/b2b"
+if F=$(shoot_until_saved "$W/b2b" 25); then
+  result PASS "second portrait photo: shutter ready again, saved ${F##* } s after the first: ${F% *}"
 else
-  result FAIL "second portrait photo: nothing saved (shutter stayed busy?)"
+  result FAIL "second portrait photo: nothing saved within 25 s (shutter stayed busy)"
 fi
 L2=$(log_since "$S2" main)
 LOST=$(echo "$L2" | grep -c "onCaptureBufferLost")
@@ -138,7 +160,8 @@ P1=$(pidof $PROVIDER)
 if [ -n "$P0" ] && [ "$P0" = "$P1" ]; then
   result PASS "camera HAL kept running"
 else
-  result FAIL "camera HAL restarted during the test (pid $P0 -> ${P1:-none})"
+  WHY=$(echo "$LA" | grep -oE "vendor.camera-provider' \(pid $P0\) received SIG[A-Z]+" | head -1 | sed 's/.* received //')
+  result FAIL "camera HAL restarted during the test (pid $P0 -> ${P1:-none}${WHY:+, it received $WHY})"
 fi
 TB=$(find /data/tombstones -newer "$W/start" -type f 2>/dev/null | wc -l)
 [ "$TB" -eq 0 ] && result PASS "no native crash (tombstone)" || result FAIL "$TB new tombstone(s) in /data/tombstones"
@@ -155,11 +178,15 @@ media_list | comm -13 "$W/before" - | while read -r f; do
   rm -f "$DCIM/$f"
 done
 
+# full log of the test next to the report, then the log buffer back to its size
+echo "$LA" | gzip -c > "${REPORT%.txt}.log.gz" 2>/dev/null || rm -f "${REPORT%.txt}.log.gz"
+[ -n "$LOGD" ] && [ ! -f "$MODDIR/debug" ] && logcat -G "$LOGD" >/dev/null 2>&1
+
 say ""
 say "Lens switching and zoom aren't covered: try them by hand."
 say "Result: $PASS passed, $FAIL failed, $NOTE notes. Report: $REPORT"
 if [ "$FAIL" -gt 0 ]; then
-  { echo; echo "==== log lines from the test"; echo "$LA" | grep -E "OplusCamLosWrap|FATAL|AndroidRuntime|onCaptureBufferLost|is not increasing|$PROVIDER| F DEBUG" | tail -300; } >> "$REPORT"
-  say "Something failed: press the Action button again and choose the debug bundle, then send both files."
+  { echo; echo "==== log lines from the test"; echo "$LA" | grep -E "OplusCamLosWrap|FATAL|AndroidRuntime|onCaptureBufferLost|is not increasing|$PROVIDER|vendor.camera-provider| F DEBUG" | tail -300; } >> "$REPORT"
+  say "Something failed: send this report and $(basename "${REPORT%.txt}.log.gz") (both in Download)."
 fi
 rm -rf "$W"

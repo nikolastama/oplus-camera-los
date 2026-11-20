@@ -134,6 +134,37 @@ static proxy_t *new_session(int oem) {
     return p;
 }
 
+/* ---- fake backends for session routing: each open hands out a device that counts configures ---- */
+typedef struct { camera3_device_t d; void *ops[OPS_SLOTS]; int oem; } fake_dev_t;
+static int g_opens_oem, g_opens_camx, g_closes, g_configs;
+static int fake_close(struct hw_device_t *d) { g_closes++; free(d); return 0; }
+static int fake_init(const struct camera3_device *d, const void *cb) { (void)d; (void)cb; return 0; }
+static int fake_config(const struct camera3_device *d, camera3_stream_configuration_t *c) { (void)d; (void)c; g_configs++; return 0; }
+static int fake_open(int oem, struct hw_device_t **out) {
+    fake_dev_t *f = calloc(1, sizeof(*f));
+    f->ops[0] = (void *)fake_init; f->ops[1] = (void *)fake_config;
+    f->d.ops = (camera3_device_ops_t *)f->ops;
+    f->d.common.close = fake_close;
+    f->oem = oem;
+    if (oem) g_opens_oem++; else g_opens_camx++;
+    *out = &f->d.common;
+    return 0;
+}
+static int fake_real_open(const struct hw_module_t *m, const char *id, struct hw_device_t **o) { (void)m; (void)id; return fake_open(1, o); }
+static int fake_camx_open(const struct hw_module_t *m, const char *id, struct hw_device_t **o) { (void)m; (void)id; return fake_open(0, o); }
+static hw_module_methods_t g_camx_methods = {fake_camx_open};
+static camera_module_t g_fake_camx;
+static const camera_module_t *g_fake_camx_p = &g_fake_camx;
+static void fake_set_cb(const void *cb) { (void)cb; }
+static void (*g_fake_set_cb_p)(const void *) = fake_set_cb;
+static int g_fake_oplus_cb;
+static int configure(struct hw_device_t *d, uint32_t mode) {
+    camera3_stream_configuration_t c = {0, 0, mode, 0};
+    camera3_device_t *cd = (camera3_device_t *)d;
+    return cd->ops->configure_streams(cd, &c);
+}
+static int is_oem_backend(struct hw_device_t *d) { return ((fake_dev_t *)((proxy_t *)d)->backend)->oem; }
+
 int main(void) {
     g_prov.result = prov_result; g_prov.notify = prov_notify;
     g_layer_ops[0] = (void *)layer_init; g_layer_ops[4] = (void *)layer_request;
@@ -236,6 +267,32 @@ int main(void) {
     CHECK(g_layer_cb == &g_prov, "direct session should get the provider's own callbacks");
     CHECK(cb_for(p, 1) == &p->cbw && cb_for(p, 0) == &g_prov, "cb_for by backend type");
     free(p);
+
+    /* 13. routing: the OnePlus camera's mode switches (op mode 0 between two OnePlus modes) stay
+     *     on the OnePlus layer; another app's standard session is moved to Qualcomm's HAL */
+    g_real_open = fake_real_open;
+    g_fake_camx.common.methods = &g_camx_methods;
+    g_camx_pp = &g_fake_camx_p; g_set_oplus_cb_pp = &g_fake_set_cb_p; g_oplus_cb = &g_fake_oplus_cb;
+    CHECK(routing_enabled(), "routing should be on with the layer's hooks present");
+    struct hw_device_t *d = 0;
+    CHECK(wrap_open(0, "1", &d) == 0 && d, "open failed");
+    ((camera3_device_t *)d)->ops->initialize((camera3_device_t *)d, &g_prov);
+    CHECK(configure(d, 0x8021) == 0 && is_oem_backend(d), "OnePlus mode should run on the layer");
+    CHECK(configure(d, 0) == 0 && is_oem_backend(d), "OnePlus camera's mode-0 session should stay on the layer");
+    CHECK(configure(d, 0x800b) == 0 && is_oem_backend(d), "next OnePlus mode should stay on the layer");
+    CHECK(g_opens_oem == 1 && g_opens_camx == 0 && g_closes == 0,
+          "mode switches reopened the camera (oem %d, camx %d, closes %d)", g_opens_oem, g_opens_camx, g_closes);
+    d->close(d);
+    CHECK(g_closes == 1, "close not forwarded");
+    d = 0; g_opens_oem = g_opens_camx = g_closes = 0;
+    CHECK(wrap_open(0, "0", &d) == 0 && d, "open failed");
+    ((camera3_device_t *)d)->ops->initialize((camera3_device_t *)d, &g_prov);
+    CHECK(configure(d, 0) == 0 && !is_oem_backend(d), "another app's session should move to Qualcomm's HAL");
+    CHECK(configure(d, 1) == 0 && !is_oem_backend(d), "and stay there");
+    CHECK(g_opens_oem == 1 && g_opens_camx == 1 && g_closes == 1, "expected one move (oem %d, camx %d, closes %d)",
+          g_opens_oem, g_opens_camx, g_closes);
+    d->close(d);
+    CHECK(g_configs == 5, "configures not forwarded (%d)", g_configs);
 
     CHECK(g_live_meta == 0, "metadata leaked at end (%d)", g_live_meta);
     if (failures) { printf("%d check(s) failed\n", failures); return 1; }

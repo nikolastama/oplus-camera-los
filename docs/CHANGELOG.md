@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.37-beta2 (faster mode switches, self-test fixes)
+- Mode switches: the OnePlus camera configures a short standard-mode session (op mode 0) between two of its own modes. The wrapper took that for another app and moved the camera to Qualcomm's HAL and back each time, closing and reopening the camera twice per switch (about 0.4 s, seen in the v0.37-beta debug bundle; the same since v0.32). A device that has run a OnePlus-mode session now stays on the OnePlus layer until it is closed; other apps open their own devices and are still moved. Host test added.
+- Self-test: waits until the phone has finished start-up (3 minutes, no app compiling). The v0.37-beta report ran during the one-time precompile.
+- Self-test: the second portrait shot presses the shutter again every 3 s until it is saved (the app ignores the key while still busy) and reports how long the shutter took to be ready. One press 2 s after the first shot was dropped and counted as a hang.
+- Self-test: keeps the whole test in a 16 MB log buffer and saves it next to the report (`.log.gz`), so a failure can be traced without a second run; the buffer size is put back afterwards. A HAL restart names the signal it died from. The ROM line shows the build.
+
 ## v0.37-beta (less system-wide impact, privacy, self-test)
 - Camera service no longer replaced: the fix for the shutter hanging after portrait / multi-frame shots moved from a fixed copy of the ROM's `cameraserver` (every app, re-made after each LineageOS update) into the wrapper, for OnePlus sessions only. A frame the HAL re-stamps older than the previous one is passed on 1 ns after it, with its `android.sensor.timestamp` result changed to match; frames Android exempts (reprocess, ZSL still capture) are left alone. No more "LineageOS was updated, flash again". Kill switch: `persist.vendor.camera.oplus_los.tsfix=0` (ARCHITECTURE.md, "Out-of-order frames").
 - SELinux: rules only for `priv_app_36`, the domain the camera runs in. The duplicates for plain `priv_app` (34 rules) only reached other privileged apps and are gone; the camera's own rules are unchanged.
