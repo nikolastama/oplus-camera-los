@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.37-beta (less system-wide impact, privacy, self-test)
+- Camera service no longer replaced: the fix for the shutter hanging after portrait / multi-frame shots moved from a fixed copy of the ROM's `cameraserver` (every app, re-made after each LineageOS update) into the wrapper, for OnePlus sessions only. A frame the HAL re-stamps older than the previous one is passed on 1 ns after it, with its `android.sensor.timestamp` result changed to match; frames Android exempts (reprocess, ZSL still capture) are left alone. No more "LineageOS was updated, flash again". Kill switch: `persist.vendor.camera.oplus_los.tsfix=0` (ARCHITECTURE.md, "Out-of-order frames").
+- SELinux: rules only for `priv_app_36`, the domain the camera runs in. The duplicates for plain `priv_app` (34 rules) only reached other privileged apps and are gone; the camera's own rules are unchanged.
+- Data folders the module creates are owned by the camera app (mode 2770) instead of open to everyone (0777), from the first boot on which the app exists. A second user's or work profile's camera keeps access (shared app group); the camera HAL keeps access to the vendor folders (camera group). LineageOS's own folders are untouched.
+- `persist.vendor.camera.privapp.list` is set before boot completes, so a camera opened right after boot (lock screen) gets every lens.
+- Privacy: OPPO's usage statistics (OplusTrack) are off (`camera_no_telemetry`). The camera tracked shutter presses, zoom, menu taps, filters and more, built each event on its report thread and tried to send it to an OxygenOS statistics provider that LineageOS doesn't have; OplusTrack also put its own crash-report handler in front of Android's. Now no session, no event building, no handler.
+- Speed: the camera is precompiled once after the first boot (Jetpack ProfileInstaller installs its bundled baseline profile, then `speed-profile` compiles just that code). LineageOS only verifies preinstalled apps at boot, so it used to run interpreted/JIT until Android compiled it while idle and charging. Skipped if Android already compiled it; once per ROM build and APK.
+- Settings: four items that do nothing on LineageOS are hidden (`camera_hide_dead_settings`): the two Quick launch entries (only OxygenOS's system services read them; LineageOS's double-press-power gesture replaces them, INSTALL.md), the privacy policy link (opens nothing without OxygenOS's statement page) and the user agreement (its target doesn't exist, so tapping it could crash the settings screen).
+- Self-test: the Action button now offers a two-minute self-test (volume up): photo, two portrait shots in a row, front photo and video, then a log check for crashes, HAL restarts, lost frames and wrapper errors; report in Download, test shots deleted (TROUBLESHOOTING.md). Volume down or no key: the debug bundle, as before.
+- Release builds come from source again (`tools/build_module.py`): its app decodes identically to the v0.36 release apart from the new patches.
+- Maintenance: `tools/check_firmware.py` reports which patches still fit a newer OxygenOS dump without building anything. The layer's byte edits carry a unique context window, so an edit that moved in a newer build is found again (`--refresh-binpatch-context`).
+- Install guide: how to make it the default camera for double-press power and the lock screen.
+- `diffs/` regenerated from a fresh decode: adds the missing records for `restrict_exported_components`, `camera_scoped_props` and `stubs_scoped_props`, and the new patch.
+- Tests: the timestamp fix driven like the provider and the layer do (`tests/oemwrap_host_test.c`), folder ownership, policy scope, update from v0.36 (old `cameraserver` copy removed from the metamodule copy).
+
 ## v0.36 (lighter in the background)
 - Boot watchdog: reads only the small crash log every 30 s for its 10 minutes, and the full log only when the camera HAL (re)starts, instead of dumping the whole log twice every 30 s.
 - Debug button: the second press puts back the logging settings the first press changed (verbose camera/HAL logs, raw frame dumps, 16 MB log buffers) instead of leaving them on until the next reboot.

@@ -50,6 +50,8 @@ APP_PATCHES = [
     P.camera_gallery_fallback,
     P.camera_disable_oem_components,
     P.restrict_exported_components,
+    P.camera_no_telemetry,
+    P.camera_hide_dead_settings,
     P.camera_scoped_props,
     P.camera_drop_embedded_libs,
 ]
@@ -92,26 +94,59 @@ def run(*cmd):
     subprocess.run(list(map(str, cmd)), check=True, stdout=subprocess.DEVNULL)
 
 
+def edit_context(data, off, length, min_side=8, max_side=128):
+    """Shortest window of <data> around the edit at <off> that occurs exactly once in <data>:
+    (hex, position of the edit inside it). Stored with each edit in binpatches.json, so the edit is
+    found again in a newer build where it has moved (tools/build_module.py --refresh-binpatch-context)."""
+    for side in range(min_side, max_side + 1, 8):
+        a, b = max(0, off - side), min(len(data), off + length + side)
+        w = bytes(data[a:b])
+        first = data.find(w)
+        if first == a and data.find(w, first + 1) < 0:
+            return w.hex(), off - a
+    return None
+
+
+def locate_edit(d, e):
+    """Offset of edit <e> in <d>: its recorded offset if the original bytes are there, else the one
+    place its context window (or, for long edits, the original bytes themselves) occurs."""
+    o, off = bytes.fromhex(e['orig']), e['offset']
+    if bytes(d[off : off + len(o)]) == o:
+        return off
+    if 'find' in e:
+        w = bytes.fromhex(e['find'])
+        i = d.find(w)
+        if i >= 0 and d.find(w, i + 1) < 0 and bytes(d[i + e['at'] : i + e['at'] + len(o)]) == o:
+            return i + e['at']
+    if len(o) >= 12:
+        i = d.find(o)
+        if i >= 0 and d.find(o, i + 1) < 0:
+            return i
+    return None
+
+
 def binpatch(path, spec, skip=()):
     d = bytearray(path.read_bytes())
     if hashlib.sha256(d).hexdigest() != spec['src_sha256']:
         print(f'  ! {spec["src"]}: not the expected build, locating edits by their bytes')
-    skipped = False
+    # locate every edit in the untouched file first: neighbouring edits share context bytes
+    todo, skipped = [], False
     for e in spec['edits']:
         if e['id'] in skip:
             print(f'  SKIPPED {e["id"]}')
             skipped = True
             continue
-        o, n, off = bytes.fromhex(e['orig']), bytes.fromhex(e['new']), e['offset']
-        if bytes(d[off : off + len(o)]) != o:
-            hits = [i for i in range(len(d)) if d.startswith(o, i)] if len(o) >= 12 else []
-            if len(hits) != 1:
-                raise SystemExit(
-                    f'{spec["dst"]}: edit at {off:#x} ({e["why"]}) does not fit this build; '
-                    'see docs/MAINTAINING.md'
-                )
-            off = hits[0]
-        d[off : off + len(o)] = n
+        off = locate_edit(d, e)
+        if off is None:
+            raise SystemExit(
+                f'{spec["dst"]}: edit {e["id"]} at {e["offset"]:#x} ({e["why"]}) does not fit this build; '
+                'see docs/MAINTAINING.md'
+            )
+        if off != e['offset']:
+            print(f'  {e["id"]}: found at {off:#x} (recorded {e["offset"]:#x})')
+        todo.append((off, bytes.fromhex(e['new'])))
+    for off, n in todo:
+        d[off : off + len(n)] = n
     path.write_bytes(bytes(d))
     if not skipped and hashlib.sha256(d).hexdigest() != spec['dst_sha256']:
         print(f'  ! {spec["dst"]}: result differs from the tested build (expected for new firmware)')
@@ -137,6 +172,26 @@ def apktool_patch(args, src_file, workdir, fns, out_file):
     run('java', '-jar', args.apktool, 'b', workdir, '-o', out_file)
 
 
+def refresh_binpatch_context(dump):
+    """Store, for each edit in binpatches.json, the shortest unique window of the stock file around
+    it (edit_context). Only for the firmware whose sha256 the file records."""
+    path = HERE / 'binpatches.json'
+    specs = json.loads(path.read_text())
+    for spec in specs:
+        d = src(dump, spec['src']).read_bytes()
+        if hashlib.sha256(d).hexdigest() != spec['src_sha256']:
+            raise SystemExit(f'{spec["src"]}: not the firmware binpatches.json was made for')
+        for e in spec['edits']:
+            if d[e['offset'] : e['offset'] + len(bytes.fromhex(e['orig']))] != bytes.fromhex(e['orig']):
+                raise SystemExit(f'{e["id"]}: original bytes not at the recorded offset')
+            ctx = edit_context(d, e['offset'], len(bytes.fromhex(e['orig'])))
+            if ctx is None:
+                raise SystemExit(f'{e["id"]}: no unique window within 128 bytes')
+            e['find'], e['at'] = ctx
+            print(f'  {e["id"]}: {len(ctx[0]) // 2}-byte window')
+    path.write_text(json.dumps(specs, indent=1) + '\n')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--list-patches', action='store_true')
@@ -149,7 +204,17 @@ def main():
     ap.add_argument('--keystore')
     ap.add_argument('--ks-alias', default='opluscam')
     ap.add_argument('--ks-pass', default=os.environ.get('OPLUS_CAMERA_KS_PASS'), help=argparse.SUPPRESS)
+    ap.add_argument(
+        '--refresh-binpatch-context',
+        action='store_true',
+        help='with --dump of the firmware binpatches.json was made for: store each edit\'s context window',
+    )
     args = ap.parse_args()
+    if args.refresh_binpatch_context:
+        if not args.dump:
+            ap.error('--dump is required')
+        refresh_binpatch_context(args.dump.resolve())
+        return
     edits = [e['id'] for s in json.loads((HERE / 'binpatches.json').read_text()) for e in s['edits']]
     if args.list_patches:
         print('app:     ', ' '.join(f.__name__ for f in APP_PATCHES))

@@ -37,4 +37,5 @@ jobs:
       - name: Tests
         run: |
           dash tests/test_common.sh
+          dash tests/test_selftest.sh
           python -m unittest discover -s tests -v

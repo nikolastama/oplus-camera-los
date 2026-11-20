@@ -39,9 +39,11 @@ Byte-level originals of every native edit are stored in `tools/binpatches.json` 
 | 7 | `camera_defer_ufs_probe` | `diffs/app/07-…` | Deferred capture reads `/proc/devinfo/ufs` (EACCES → crash). |
 | 8 | `camera_gallery_fallback` | `diffs/app/08-…` (adds `tools/smali/LosGalleryFallback*.smali`) | Thumbnail opens nothing without OnePlus Gallery. |
 | 9 | `camera_disable_oem_components` | `diffs/app/09-…` | Re-enables the components below (use `--enable-component` for single ones). |
-| 10 | `restrict_exported_components` | next `make_diffs.py` run (see `diffs/README.md`) | `EponaProvider` and six more components are reachable by any app again (`android:exported="true"` without a permission). |
-| 11 | `camera_scoped_props` | next `make_diffs.py` run | The app's two reflective `anim_level` reads go to the real system property (unset on LineageOS). |
-| 12 | `camera_drop_embedded_libs` (debloat) | `diffs/app/10-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 39 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
+| 10 | `restrict_exported_components` | `diffs/app/10-…` | `EponaProvider` and six more components are reachable by any app again (`android:exported="true"` without a permission). |
+| 11 | `camera_no_telemetry` | `diffs/app/11-…` | OPPO's usage statistics (OplusTrack) run again: events built on the report thread and sent to a statistics provider LineageOS doesn't have, plus OplusTrack's crash-report handler. |
+| 12 | `camera_hide_dead_settings` | `diffs/app/12-…` | Shows Quick launch (both entries), the privacy policy link and the user agreement again (`DEAD_SETTINGS` in `tools/patches.py`; on LineageOS they do nothing or fail). |
+| 13 | `camera_scoped_props` | `diffs/app/13-…` (adds `tools/smali-stubs/LosProps.smali` via the stubs jar, `diffs/stubs/`) | The app's two reflective `anim_level` reads go to the real system property (unset on LineageOS). |
+| 14 | `camera_drop_embedded_libs` (debloat) | `diffs/app/14-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 39 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
 
 ### Components disabled (debloat), `tools/patches.py: OEM_ONLY_COMPONENTS`
 
@@ -97,7 +99,6 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 |---|---|---|
 | Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `981a40f9e2031faa1b1f40b9000f40b9` → `…1b2f40b9…` |
 | Camera processing library | `/odm/lib64/libAlgoProcess.so` | see the two hex strings at the `fixlib` call |
-| Camera service | `/system/bin/cameraserver` | `…e82300b9…` (`str w8,[sp,#0x20]`) → `…1f2003d5…` (`nop`) |
 
 ## 4b. Isolation (v0.32)
 
@@ -106,6 +107,19 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 | Third-party sessions reopened on Qualcomm's HAL (wrapper proxy) | at runtime: `setprop persist.vendor.camera.oplus_los.route 0`; permanently: build the wrapper from `history`'s v0.31 `oemwrap.c` (in git history) |
 | Camera props answered in-process (`stubs_scoped_props`, `camera_scoped_props`) | `--skip stubs_scoped_props --skip camera_scoped_props` and put the props from `tools/gen_losprops.py` back into `module/system.prop` |
 | 16 MB log buffers only in debug mode | `touch /data/adb/modules/oplus_camera_los/debug` |
+
+## 4c. Less system-wide impact (v0.37)
+
+| Change | Revert |
+|---|---|
+| Frame-timestamp fix moved from a `cameraserver` copy into the wrapper (OnePlus sessions only) | at runtime: `setprop persist.vendor.camera.oplus_los.tsfix 0`; to go back to the `cameraserver` copy, restore step 3 of `customize.sh` and its `post-fs-data.sh`/`service.sh` parts from v0.36 (`history/v0.36`) |
+| SELinux rules only for `priv_app_36` (plain `priv_app` duplicates removed) | `history/v0.36/sepolicy.rule` |
+| Module-created data dirs owned by the camera app (`2770`) instead of `0777` (`tighten_dirs` in `common.sh`) | remove the two `tighten_dirs` calls; `chmod 0777` the dirs once |
+| OplusTrack statistics off (`camera_no_telemetry`, section 1) | `--skip camera_no_telemetry` |
+| One-time precompile after boot (`precompile` in `service.sh`) | delete the `precompile` function and its call; `cmd package compile --reset com.oplus.camera` drops the compiled code |
+| Self-test on the Action button (`selftest.sh`) | delete `module/selftest.sh` (the button then always saves the debug bundle) |
+| Layer byte edits located by context window (`find`/`at` in `binpatches.json`) | remove the two keys; edits are then only applied at their recorded offsets |
+| `privapp.list` set before boot completes instead of after | move the block below the `sys.boot_completed` wait in `service.sh` |
 
 ## 5. System-level settings (module scripts)
 

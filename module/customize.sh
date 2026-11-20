@@ -133,27 +133,6 @@ fixlib /odm/lib64/libAlgoProcess.so "$MODPATH/system/odm/lib64/libAlgoProcess.so
   e86f40f9e97740f98b008052eae740b9ecf740b9ed0741b9290108cb880e00f9290dca9a8b320a29 \
   e86f40f9e93341b98b008052eae740b9ec030a2aed030a2a297d0011880e00f929691b128b320a29 "Camera processing library"
 
-# 3) Camera service (system). For multi-frame shots (portrait, HDR) OnePlus's HAL reuses frames it
-#    captured just before the shutter, so a frame's timestamp can be older than the previous one.
-#    Stock Android then marks that frame's buffers as errors (Camera3Stream::returnBuffer: "timestamp
-#    ... is not increasing") unless the request is a ZSL still capture or a reprocess; the app gets
-#    6 of 7 frames and waits for the 7th, so the UI hangs after the shot. Keep the warning, drop
-#    the "b.status = CAMERA_BUFFER_STATUS_ERROR" store, as for ZSL captures.
-#    mov w8,#1; str w8,[sp,#0x20] -> nop; ldr x25,[x19]; mov w9,#0x3040; str x21,[x19,#0x258]
-#    The copy is only valid for this ROM build: post-fs-data.sh drops it after a LineageOS update.
-echo "$(rom_build)" > "$MODPATH/.rom_build"
-CS=/system/bin/cameraserver
-CS_OURS=$(cat "$INSTALLED/.cameraserver.sha256" 2>/dev/null)
-if [ -n "$CS_OURS" ] && [ "$(sha256sum "$CS" 2>/dev/null | cut -d' ' -f1)" = "$CS_OURS" ] \
-   && [ "$(cat "$INSTALLED/.rom_build" 2>/dev/null)" != "$(rom_build)" ]; then
-  # LineageOS was updated and our old copy is still mounted, so $CS isn't the new ROM's file
-  ui_print "! Camera service: LineageOS was updated. Reboot once, then flash this module again."
-else
-  fixlib "$CS" "$MODPATH/system/bin/cameraserver" 2296132 \
-    28008052e82300b9790240f909088652752e01f9 280080521f2003d5790240f909088652752e01f9 "Camera service" \
-    && sha256sum "$MODPATH/system/bin/cameraserver" | cut -d' ' -f1 > "$MODPATH/.cameraserver.sha256"
-fi
-
 # Refuse if another copy of the OnePlus camera is already installed (ROM or other module)
 if pm path $PKG >/dev/null 2>&1 && [ ! -d $INSTALLED ]; then
   abort "! $PKG is already installed on this system. Remove it first."
@@ -192,7 +171,6 @@ done
 # It lives on /odm because libAlgoProcess (on LineageOS's /odm) dlopens it by that absolute path.
 [ -d "$MODPATH/system/odm" ] && set_perm_recursive "$MODPATH/system/odm" 0 0 0755 0644 u:object_r:vendor_file:s0
 [ -f "$MODPATH/system/odm/lib64/libOplusSecurity.so" ] && chcon u:object_r:same_process_hal_file:s0 "$MODPATH/system/odm/lib64/libOplusSecurity.so"
-[ -f "$MODPATH/system/bin/cameraserver" ] && chown 0:2000 "$MODPATH/system/bin/cameraserver" && chmod 0755 "$MODPATH/system/bin/cameraserver"
 # fixed copies keep the SELinux label of the ROM file they replace
 [ -f "$FIXED" ] && while read -r f ctx; do
   case "$ctx" in u:object_r:*) ;; *) case "$f" in odm/*) ctx=u:object_r:same_process_hal_file:s0 ;; *) ctx="" ;; esac ;; esac

@@ -20,9 +20,9 @@ for f in /data/dalvik-cache/*/*OplusCamera* /data/dalvik-cache/*/*com.oplus.came
 done
 
 # 1a) leftovers of the debug button (session snapshot / scratch dirs)
-rm -rf /data/local/tmp/ocam-debug-* /data/local/tmp/ocam-session-snapshot.txt* /data/local/tmp/ocam-snapshot.pending
+rm -rf /data/local/tmp/ocam-debug-* /data/local/tmp/ocam-selftest-* /data/local/tmp/ocam-session-snapshot.txt* /data/local/tmp/ocam-snapshot.pending
 # debug bundles the Action button saved to Download
-rm -f /data/media/*/Download/oplus-camera-debug-*.tar.gz
+rm -f /data/media/*/Download/oplus-camera-debug-*.tar.gz /data/media/*/Download/oplus-camera-selftest-*.txt
 # 1b) LineageOS directories this module relabelled: put their original label back
 for r in "$MODDIR"/.relabeled/*; do
   [ -f "$r" ] || continue

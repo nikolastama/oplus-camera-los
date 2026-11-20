@@ -10,28 +10,36 @@
     "offset": 259407,
     "orig": "65",
     "new": "32",
-    "why": "DT_NEEDED libsensorbridge.so -> libsensorbridg2.so (private copy; LineageOS ships an incompatible libsensorbridge)"
+    "why": "DT_NEEDED libsensorbridge.so -> libsensorbridg2.so (private copy; LineageOS ships an incompatible libsensorbridge)",
+    "find": "736f726272696467652e736f0076656e64",
+    "at": 8
    },
    {
     "id": "layer-needed-charger-v9",
     "offset": 259443,
     "orig": "38",
     "new": "39",
-    "why": "DT_NEEDED vendor.oplus.hardware.charger-V8-ndk.so -> V9 (LineageOS ships V9 only)"
+    "why": "DT_NEEDED vendor.oplus.hardware.charger-V8-ndk.so -> V9 (LineageOS ships V9 only)",
+    "find": "6861726765722d56382d6e646b2e736f00",
+    "at": 8
    },
    {
     "id": "layer-needed-uilaye2",
     "offset": 259776,
     "orig": "72",
     "new": "32",
-    "why": "DT_NEEDED camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so (private copy)"
+    "why": "DT_NEEDED camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so (private copy)",
+    "find": "722e75696c617965722e736f0063616d65",
+    "at": 8
    },
    {
     "id": "layer-zoom-follow-app",
     "offset": 3538472,
     "orig": "291d41b9",
     "new": "e9031f2a",
-    "why": "ZoomDivisionV2::Initialize: ldr w9,[x9,#0x11c] -> mov w9,wzr (follow ANDROID_CONTROL_ZOOM_RATIO)"
+    "why": "ZoomDivisionV2::Initialize: ldr w9,[x9,#0x11c] -> mov w9,wzr (follow ANDROID_CONTROL_ZOOM_RATIO)",
+    "find": "091500b9099141f9291d41b909f500b91ff900b9",
+    "at": 8
    }
   ]
  },
@@ -46,28 +54,36 @@
     "offset": 18408,
     "orig": "38",
     "new": "39",
-    "why": "DT_NEEDED charger-V8-ndk -> V9"
+    "why": "DT_NEEDED charger-V8-ndk -> V9",
+    "find": "6861726765722d56382d6e646b2e736f00",
+    "at": 8
    },
    {
     "id": "uilayer-soname",
     "offset": 18690,
     "orig": "72",
     "new": "32",
-    "why": "DT_SONAME camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so"
+    "why": "DT_SONAME camera.oemlayer.uilayer.so -> camera.oemlayer.uilaye2.so",
+    "find": "722e75696c617965722e736f0000415053",
+    "at": 8
    },
    {
     "id": "uilayer-dlopen-real-layer",
     "offset": 29157,
     "orig": "2f6f646d2f6c696236342f68772f63616d6572612e6f656d6c617965722e76322e736f",
     "new": "63616d6572612e6f656d6c617965722e76322e736f0000000000000000000000000000",
-    "why": "dlopen path \"/odm/lib64/hw/camera.oemlayer.v2.so\" -> \"camera.oemlayer.v2.so\" (hw/ path is the wrapper; the real layer is found by name in /odm/lib64)"
+    "why": "dlopen path \"/odm/lib64/hw/camera.oemlayer.v2.so\" -> \"camera.oemlayer.v2.so\" (hw/ path is the wrapper; the real layer is found by name in /odm/lib64)",
+    "find": "79706520256400002f6f646d2f6c696236342f68772f63616d6572612e6f656d6c617965722e76322e736f0043616d4f005b20",
+    "at": 8
    },
    {
     "id": "uilayer-packagename-fallback",
     "offset": 212128,
     "orig": "200f003501000014c80000b0088d43f9080140b90804003401000014a0feffd000d41b91e0ff00f9f0d6ff97e30300aaa0feffd000701891a1feffd021942b9182fefff042ac2791e20301f9a4feffd0841c0f91e40b01f9a6feffb0c614109105228152e50f02b946590094e0ff40f9ded6ff97e10341f9e30f42b9e40b41f9e20300aa80fefff0000022914aefff9701000014",
     "new": "a004003401000014c80000b0085943f9080140f9a008805200013fd6e103002ae85741f9000d40f9e2c30f91dd5b0094a00d0035e90742f929014039490d0034a9000010e90702f9290280d2e90302f911000014636f6d2e6f706c75732e63616d657261000000001f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d5",
-    "why": "StaticSupportCapabilities::InitPackageName: when com.oplus.packageName is absent, accept vendor tag 0x45 and use embedded \"com.oplus.camera\" (branch inverted + replacement code at 0x33ca8..0x33d33; drops a /proc read + log)"
+    "why": "StaticSupportCapabilities::InitPackageName: when com.oplus.packageName is absent, accept vendor tag 0x45 and use embedded \"com.oplus.camera\" (branch inverted + replacement code at 0x33ca8..0x33d33; drops a /proc read + log)",
+    "find": "e2c30f91e95b0094200f003501000014c80000b0088d43f9080140b90804003401000014a0feffd000d41b91e0ff00f9f0d6ff97e30300aaa0feffd000701891a1feffd021942b9182fefff042ac2791e20301f9a4feffd0841c0f91e40b01f9a6feffb0c614109105228152e50f02b946590094e0ff40f9ded6ff97e10341f9e30f42b9e40b41f9e20300aa80fefff0000022914aefff9701000014e82741f9089140f9",
+    "at": 8
    }
   ]
  },
@@ -82,7 +98,9 @@
     "offset": 12267,
     "orig": "65",
     "new": "32",
-    "why": "DT_SONAME libsensorbridge.so -> libsensorbridg2.so"
+    "why": "DT_SONAME libsensorbridge.so -> libsensorbridg2.so",
+    "find": "736f726272696467652e736f0041505332",
+    "at": 8
    }
   ]
  }

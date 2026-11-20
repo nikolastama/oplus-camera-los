@@ -469,6 +469,115 @@ def restrict_exported_components(root):
     return f'{len(INTERNAL_COMPONENTS)} components'
 
 
+# Settings that do nothing (or fail) on LineageOS, hidden the way the app hides its own unused
+# items (oplusos:isPreferenceVisible="false"). The preferences still exist, so every code path that
+# looks them up keeps working; no code makes them visible again.
+DEAD_SETTINGS = {
+    # Quick launch writes Settings.Secure "com.oplus.camera quick launch", which only OxygenOS's
+    # system services read. LineageOS: Settings > System > Gestures > double-press power.
+    'camera_setting_preferences.xml': [
+        'pref_camera_quick_launch_key',
+        'pref_camera_quick_launch_V2_setting_key',
+    ],
+    'camera_setting_sub_preferences.xml': [
+        # opens OxygenOS's bootreg statement page; returns without doing anything when it's absent
+        'pref_privacy_setting_privacy_policy',
+        # starts com.oplus.action.user.agreement.page in the camera's own package, which has no
+        # activity for it (unguarded startActivity: ActivityNotFoundException)
+        'pref_privacy_setting_user_agreement',
+    ],
+}
+
+
+def camera_hide_dead_settings(root):
+    """Hide the settings in DEAD_SETTINGS."""
+    n = 0
+    for name, keys in DEAD_SETTINGS.items():
+        p = Path(root) / 'res/xml' / name
+        t = _read(p)
+        if 'xmlns:oplusos="http://schemas.android.com/apk/res-auto"' not in t:
+            raise ValueError(f'{name}: oplusos namespace missing')
+        for k in keys:
+            m = re.search(r'<[\w.]+ [^>]*android:key="' + re.escape(k) + r'"[^>]*?(/?)>', t)
+            if not m:
+                raise ValueError(f'{name}: {k} missing')
+            tag = m.group(0)
+            if 'isPreferenceVisible' in tag:
+                raise ValueError(f'{name}: {k} already has a visibility')
+            end = len(tag) - (2 if tag.endswith('/>') else 1)
+            new = tag[:end].rstrip() + ' oplusos:isPreferenceVisible="false" ' + tag[end:]
+            t = t[: m.start()] + new + t[m.end() :]
+            n += 1
+        _write(p, t)
+    return f'{n} settings'
+
+
+def camera_no_telemetry(root):
+    """Turn off OPPO's usage statistics (OplusTrack). The camera tracks shutter presses, zoom,
+    menu taps, filters and more, builds each event on its report thread and hands it to
+    OxygenOS's statistics provider (content://com.oplus.statistics.provider/track_event), which
+    LineageOS doesn't have: every event failed after a provider lookup. OplusTrack also adds a
+    crash-report handler in front of Android's. Three cuts, each one an exit the code already has:
+      1. DcsReporter.init always takes its existing test-mode exit (after storing the app context,
+         which other code reads): no OplusTrack session, activity tracking or crash handler.
+      2. BaseEvent.report returns false (not sent) right away, as it does when the report thread
+         is missing: events are no longer assembled or queued.
+      3. OplusTrack.onCommon's sender returns false (its failure result) for the callers that
+         bypass BaseEvent (Super Text and a synthetic class)."""
+    done = []
+    # 1. DcsReporter.init: "if-nez p1, :cond_N" after TestUtil.f() -> "goto :cond_N"
+    p, t = _find(
+        root,
+        'smali*/com/oplus/camera/statistics/events/DcsReporter.smali',
+        '.method public init(Landroid/content/Context;)V',
+    )
+    pat = re.compile(
+        r'(\.method public init\(Landroid/content/Context;\)V\n.*?'
+        r'iput-object p1, p0, Lcom/oplus/camera/statistics/events/DcsReporter;->mAppContext:Landroid/content/Context;\n'
+        r'(?:\s*\.line \d+\n|\s*\n)*\s*invoke-static \{\}, Lcom/oplus/camera/common/utils/TestUtil;->\w+\(\)Z\n'
+        r'(?:\s*\.line \d+\n|\s*\n)*\s*move-result p1\n(?:\s*\.line \d+\n|\s*\n)*\s*)'
+        r'if-nez p1, (:cond_\w+)',
+        re.S,
+    )
+    t, n = pat.subn(lambda m: m.group(1) + 'goto ' + m.group(2), t, count=1)
+    if n != 1:
+        raise ValueError('DcsReporter.init test-mode exit not found')
+    _write(p, t)
+    done.append(p.name)
+    # 2. BaseEvent.report(Map): return false, signature annotation kept
+    p, t = _find(
+        root,
+        'smali*/com/oplus/camera/statistics/events/BaseEvent.smali',
+        '.method public report(Ljava/util/Map;)Z',
+    )
+    m = re.search(r'\.method public report\(Ljava/util/Map;\)Z\n(.*?)\.end method', t, re.S)
+    ann = re.search(
+        r'    \.annotation system Ldalvik/annotation/Signature;\n.*?    \.end annotation\n', m.group(1), re.S
+    )
+    if not m or not ann or 'ReportThread;->getDataReportHandler' not in m.group(1):
+        raise ValueError('BaseEvent.report not as expected')
+    body = '    .locals 1\n' + ann.group(0) + '\n    const/4 v0, 0x0\n\n    return v0\n'
+    t = t[: m.start(1)] + body + t[m.end(1) :]
+    _write(p, t)
+    done.append(p.name)
+    # 3. OplusTrack sender: the static (Lxx/yy;)Z method logging "onCommon logTag is "
+    hits = []
+    for p in _smali(root):
+        t = _read(p)
+        if '.source "OplusTrack.java"' not in t or '"onCommon logTag is ' not in t:
+            continue
+        for m in re.finditer(r'\.method public static (\w+)\((L[\w/$]+;)\)Z\n(.*?)\.end method', t, re.S):
+            if '"onCommon logTag is ' in m.group(3):
+                hits.append((p, t, m))
+    if len(hits) != 1:
+        raise ValueError(f'OplusTrack sender: {len(hits)} candidates')
+    p, t, m = hits[0]
+    t = t[: m.start(3)] + '    .locals 1\n\n    const/4 v0, 0x0\n\n    return v0\n' + t[m.end(3) :]
+    _write(p, t)
+    done.append(p.name)
+    return ', '.join(done)
+
+
 # Install-time patches of ROM blobs (offlinecamera-service-impl, libAlgoProcess) live in
 # module/customize.sh (fixlib) so they always apply to the exact file on the user's ROM.
 

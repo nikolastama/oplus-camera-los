@@ -1,23 +1,46 @@
 #!/system/bin/sh
 # OnePlus Camera for LineageOS - late boot.
-# Let the QTI camera HAL treat com.oplus.camera as a privileged client. In memory only (-n):
-# never written to persistent storage, so it disappears on the next boot after removal.
 MODDIR=${0%/*}
-until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
-# Debug mode (opt-in, off by default so the module changes nothing outside the camera): create
-# $MODDIR/debug to get 16 MB log buffers, so a camera failure isn't pushed out of the log before
-# the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
-[ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
-if [ -f "$MODDIR/rom_updated" ]; then
-  cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los_rom \
-    "LineageOS was updated, so the module's camera service fix was switched off. Flash the module again to restore it (the camera can hang after some shots until then)." >/dev/null 2>&1
-  mv -f "$MODDIR/rom_updated" "$MODDIR/rom_updated.notified"
-fi
+. "$MODDIR/common.sh"
+
+# Let LineageOS's camera service treat com.oplus.camera as a privileged client (all lenses). Only
+# this package is affected. In memory only (-n): never written to persistent storage, so it is
+# gone on the next boot after removal. Set before boot completes (persistent props are loaded by
+# this stage), so a camera opened right after boot already gets every lens.
 CUR=$(getprop persist.vendor.camera.privapp.list)
 case ",$CUR," in
   *,com.oplus.camera,*) ;;
   *) resetprop -n persist.vendor.camera.privapp.list "${CUR:+$CUR,}com.oplus.camera" ;;
 esac
+
+until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
+# First boot after install: the camera app now exists, so its data folders can be given to it
+# (common.sh; a no-op on later boots, post-fs-data.sh already did it).
+tighten_dirs "$MODDIR"
+
+# Precompile the camera once (v0.37). LineageOS only verifies preinstalled apps at boot, so the
+# camera ran interpreted/JIT until Android's idle-and-charging job compiled it. Jetpack's documented
+# sequence: ProfileInstaller (inside the app) installs the app's bundled baseline profile, then
+# ART compiles just the code that profile lists (speed-profile: small, quick). Only while the
+# camera is still at "verify" (left alone if Android already compiled it), once per ROM build and
+# APK, a minute after boot in the background. The compiled code and profile are Android's usual
+# files for the app; uninstall.sh removes them with the app.
+precompile() {
+  _pc_key="$(getprop ro.build.fingerprint) $(stat -c %Y /system_ext/priv-app/OplusCamera/OplusCamera.apk 2>/dev/null)"
+  [ "$(cat "$MODDIR/.precompiled" 2>/dev/null)" = "$_pc_key" ] && return 0
+  sleep 60
+  dumpsys package "$PKG" 2>/dev/null | grep -m1 -q '\[status=verify\]' || return 0
+  echo "$_pc_key" > "$MODDIR/.precompiled"   # one attempt, even if it fails
+  am broadcast -f 0x20 -a androidx.profileinstaller.action.INSTALL_PROFILE \
+    -n "$PKG/androidx.profileinstaller.ProfileInstallReceiver" >/dev/null 2>&1
+  sleep 5
+  cmd package compile -m speed-profile -f "$PKG" >/dev/null 2>&1
+}
+precompile &
+# Debug mode (opt-in, off by default so the module changes nothing outside the camera): create
+# $MODDIR/debug to get 16 MB log buffers, so a camera failure isn't pushed out of the log before
+# the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
+[ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
 
 # Watchdog for the OnePlus camera layer: if the camera HAL keeps dying after boot, take the layer
 # out of the module so the next boot is back to LineageOS's own camera path, and tell the user.

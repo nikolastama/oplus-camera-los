@@ -1,0 +1,58 @@
+#!/system/bin/sh
+# OnePlus Camera for LineageOS - early boot. Only creates/labels paths this module owns.
+MODDIR=${0%/*}
+
+. "$MODDIR/common.sh"
+
+# Clear files of older versions out of the metamodule's copy (e.g. v0.35-v0.36's camera service
+# copy). Needed once per install or after the watchdog drops the layer, not on every boot.
+if [ ! -f "$MODDIR/.pruned" ]; then
+  prune_mirror "$MODDIR" && touch "$MODDIR/.pruned"
+fi
+
+# Data dirs the OnePlus camera/APS expect. Each is created only if absent and recorded in the
+# module's own .created list (nothing is written inside them). A directory that already existed
+# (i.e. belongs to LineageOS) is never chowned or removed; see below for its label.
+for spec in /data/system/camera_rus:1047:oplus_camera_rus_file \
+            /data/vendor/cam_alog:1006:vendor_camera_data_file \
+            /data/vendor/camera_process:1006:vendor_camera_data_file \
+            /data/vendor/camera_rus:1006:vendor_camera_data_file; do
+  d=${spec%%:*}; rest=${spec#*:}; owner=${rest%%:*}; ctx=${rest#*:}
+  m="$MODDIR/.created/$(marker "$d")"
+  if [ ! -e "$d" ]; then
+    mkdir -p "$MODDIR/.created" && mkdir "$d" && touch "$m"
+  fi
+  # (re)label only when needed: a recursive relabel walks every log file in the directory.
+  # A new folder starts open (0777) until tighten_dirs below can give it to the camera app.
+  if [ -f "$m" ] && [ "$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')" != "u:object_r:$ctx:s0" ]; then
+    [ "$(stat -c %a "$d")" = 2770 ] || { chown "$owner:$owner" "$d"; chmod 0777 "$d"; }
+    chcon -R "u:object_r:$ctx:s0" "$d" 2>/dev/null
+  fi
+done
+
+# The processing stage keeps per-job size records in camera_rus/jobSize; create it inside the
+# module-created camera_rus only (removed with it on uninstall).
+if [ -f "$MODDIR/.created/_data_system_camera_rus" ] && [ ! -d /data/system/camera_rus/jobSize ]; then
+  mkdir /data/system/camera_rus/jobSize && chown 1047:1047 /data/system/camera_rus/jobSize &&
+    chmod 0777 /data/system/camera_rus/jobSize &&
+    chcon u:object_r:oplus_camera_rus_file:s0 /data/system/camera_rus/jobSize 2>/dev/null
+fi
+
+# Give the folders above to the camera app (common.sh). No-op once done, or before the app exists.
+tighten_dirs "$MODDIR"
+
+# LineageOS creates /data/vendor/cam_alog, /data/vendor/camera_process and camera_remote_dump itself but leaves them
+# vendor_data_file, which the camera app may not write (OxygenOS/Infinity X label them
+# vendor_camera_data_file). Relabel those three, saving the original label first in the module's
+# .relabeled list; uninstall.sh puts the saved label back.
+for d in /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_remote_dump; do
+  [ -d "$d" ] || continue
+  m="$MODDIR/.created/$(marker "$d")"; [ -f "$m" ] && continue
+  r="$MODDIR/.relabeled/$(marker "$d")"
+  if [ ! -f "$r" ]; then
+    orig=$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')
+    case "$orig" in u:object_r:*:s0) mkdir -p "$MODDIR/.relabeled" && echo "$d $orig" > "$r" ;; *) continue ;; esac
+  fi
+  [ "$(ls -dZ "$d" 2>/dev/null | awk '{print $1}')" = u:object_r:vendor_camera_data_file:s0 ] ||
+    chcon -R u:object_r:vendor_camera_data_file:s0 "$d" 2>/dev/null
+done

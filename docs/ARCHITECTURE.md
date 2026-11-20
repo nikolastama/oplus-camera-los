@@ -66,6 +66,8 @@ Third-party apps never get the tag, so they keep the generic pipeline.
 2. Gives the app's picture-metadata surface (RAW16, consumer usage 0x40) the stream use case 0x10002, so the HAL writes each frame's metadata into it.
 3. **Caps video-encoder streams at 40 buffers.** A LineageOS video-encoder surface has no BufferQueue slot expansion, so it holds at most 64 buffers. In some video modes (1080p60, stabilisation) OnePlus's HAL asks for 64, and cameraserver also needs the encoder's own spare buffers on top. It then refused the whole session ("Unable to set buffer count", −38), leaving a black preview, followed by −22 on retries because the encoder surface was still connected. 42 is known to work at 1080p.
 
+4. **Keeps frame timestamps increasing** for multi-frame shots ("Out-of-order frames" below).
+
 Any other session passes straight through.
 
 ## Deferred capture
@@ -84,9 +86,19 @@ AOSP's `AHardwareBuffer_lockPlanes` only returns one plane for Qualcomm's `YCbCr
 
 ## Out-of-order frames in multi-frame shots
 
-For portrait and other multi-frame shots (7 frames per camera), OnePlus's HAL builds part of the burst from frames it captured just before the shutter, re-stamped a few nanoseconds after the original (`80319044658` → `80319044667`). Their timestamps are older than the frame returned before them. Stock Android's `Camera3Stream::returnBuffer` marks such a buffer as an error (`timestamp … is not increasing`) unless the request is a ZSL still capture or a reprocess, so the app received 6 of 7 frames (`onCaptureBufferLost`), and its processing stage waited up to 20 s for the 7th: the shutter stayed busy until the app was paused. The install-time `cameraserver` fix keeps the warning but returns the buffer normally, as Android does for ZSL captures. Other apps' sessions run on Qualcomm's stock path, which doesn't produce out-of-order timestamps, so nothing changes for them.
+For portrait and other multi-frame shots (7 frames per camera), OnePlus's HAL builds part of the burst from frames it captured just before the shutter, re-stamped a few nanoseconds after the original (`80319044658` → `80319044667`). Their timestamps are older than the frame returned before them. Stock Android's `Camera3Stream::returnBuffer` marks a buffer as an error when its timestamp is not greater than the stream's previous one (`timestamp … is not increasing`), unless the request is a ZSL still capture or a reprocess. The app then received 6 of 7 frames (`onCaptureBufferLost`), and its processing stage waited up to 20 s for the 7th: the shutter stayed busy until the app was paused.
 
-The fixed copy is made from the installed ROM's own `cameraserver` and is only valid for that build. `post-fs-data.sh` compares the ROM build recorded at install (`.rom_build`, from `/system/build.prop`) with the current one and drops the copy after a LineageOS update; `service.sh` then posts a notification to flash the module again.
+Since v0.37 the wrapper handles this inside the camera HAL process, for OnePlus sessions only (v0.35–v0.36 shipped a fixed copy of the ROM's `cameraserver` instead, which applied to every app and had to be re-made after each LineageOS update):
+
+- The OnePlus layer is initialised with the wrapper's callback table instead of the provider's; every callback is forwarded with the provider's own table pointer, so the provider sees exactly what it would without the wrapper.
+- `process_capture_request` notes, per frame, whether the camera service exempts it: an input buffer (reprocess), or `android.control.enableZsl` = true with `android.control.captureIntent` = STILL_CAPTURE. Requests without settings repeat the previous settings, as in the camera service.
+- A shutter notification whose timestamp is not greater than the newest one passed on is sent with timestamp = previous + 1 ns (the readout timestamp moves by the same amount); exempt and unknown frames, timestamp 0 and error messages pass unchanged. The HAL's own message isn't modified: a copy is sent.
+- That frame's capture result carrying `android.sensor.timestamp` equal to the original value is sent with the same new value, so the image and its result still match. Qualcomm's capture-result struct is longer than AOSP's (private fields at `0x40`/`0x48`), so it is never copied: only its metadata pointer is swapped for the duration of the call, to a copy of the metadata, and restored.
+- Each change is logged: `OplusCamLosWrap: camera N frame F: shutter T older than previous P, sent as P+1`.
+
+Struct offsets (shutter message `0x08` frame / `0x10` timestamp / `0x18` readout; request `0x08` settings / `0x10` input buffer; result `0x08` metadata) were read from `camera.qcom.so`'s own logging of these structs. `tests/oemwrap_host_test.c` drives the logic like the provider and the layer do. Kill switch: `setprop persist.vendor.camera.oplus_los.tsfix 0` (read when a session starts). Other apps' sessions run on Qualcomm's HAL with the provider's own callbacks and are never touched.
+
+One difference from the old `cameraserver` fix: a raised frame reaches the app with a timestamp 1 ns after the previous frame instead of its original, older one. OnePlus's per-lens (physical camera) result metadata keeps the original value.
 
 ## Watchdog
 

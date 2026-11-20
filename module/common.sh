@@ -9,12 +9,42 @@ INSTALLED=$MODULES/$MODID
 # where metamodules keep their own copy of each module's files
 METAMODULE_MNTS="/data/adb/metamodule/mnt $MODULES/meta-overlayfs/mnt $MODULES/meta-mountify/mnt"
 
-# The ROM build, read from the file (runtime props can be spoofed). A fixed copy of a /system file
-# is only valid for the build it was made from.
-rom_build() { grep -hE '^ro\.build\.(fingerprint|date\.utc)=' /system/build.prop 2>/dev/null | sort | tr '\n' ' '; }
-
 # File name that records a /data path in .created/ and .relabeled/: /data/vendor/x -> _data_vendor_x
 marker() { echo "$1" | tr / _; }
+
+# The camera app's user id for user 0, from the package manager's list (empty until the app has
+# been installed, i.e. on the first boot after flashing). Only regular app ids are accepted.
+app_uid() {
+  _au=$(awk -v p="$PKG" '$1 == p { print $2; exit }' "${PACKAGES_LIST:-/data/system/packages.list}" 2>/dev/null)
+  case "$_au" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$_au" -ge 10000 ] && [ "$_au" -lt 20000 ] && echo "$_au"
+}
+
+# Data folders this module created (listed in <module>/.created): owned by the camera app instead
+# of open to everyone (they were mode 0777 before v0.37). Folders the HAL may use keep the camera
+# group (the camera HAL runs in it); /data/system/camera_rus gets the app's shared group, which
+# Android gives the camera in every user, so a second user's or work profile's camera can use it
+# too. setgid keeps the group on files and folders created inside. Folders that belong to
+# LineageOS are never changed. Until the app id is known (first boot after install) the folders
+# keep their creation mode, so the camera never loses access; service.sh calls this again once
+# the app is installed.
+DATA_DIRS="/data/system/camera_rus:shared /data/system/camera_rus/jobSize:shared
+/data/vendor/cam_alog:1006 /data/vendor/camera_process:1006 /data/vendor/camera_rus:1006"
+tighten_dirs() {  # <module dir>
+  _td_uid=$(app_uid) || return 0
+  _td_shared=$((_td_uid - 10000 + 50000))   # UserHandle.getSharedAppGid
+  for _td in $DATA_DIRS; do
+    _td_d=${_td%:*}; _td_g=${_td##*:}; [ "$_td_g" = shared ] && _td_g=$_td_shared
+    # only module-created folders (jobSize lives inside the module-created camera_rus)
+    case "$_td_d" in
+      */jobSize) [ -f "$1/.created/$(marker "${_td_d%/*}")" ] || continue ;;
+      *) [ -f "$1/.created/$(marker "$_td_d")" ] || continue ;;
+    esac
+    [ -d "$_td_d" ] && [ ! -L "$_td_d" ] || continue
+    [ "$(stat -c '%u:%g:%a' "$_td_d" 2>/dev/null)" = "$_td_uid:$_td_g:2770" ] && continue
+    chown "$_td_uid:$_td_g" "$_td_d" && chmod 2770 "$_td_d"
+  done
+}
 
 # Metamodules mount their own copy of each module's files, not the module folder itself. On some
 # versions a module update only adds files to that copy, so files an older version of this module

@@ -40,6 +40,11 @@ int __system_property_get(const char *, char *);
 #define LOG_I 4
 #define LOG_E 6
 #define TAG "OplusCamLosWrap"
+#ifdef OEMWRAP_HOST_TEST   /* tests/oemwrap_host_test.c builds the C logic on the build machine */
+#define CPU_RELAX() ((void)0)
+#else
+#define CPU_RELAX() __asm__ volatile("yield")
+#endif
 
 typedef struct camera_metadata camera_metadata_t;
 typedef struct {
@@ -54,6 +59,8 @@ void free_camera_metadata(camera_metadata_t *);
 int append_camera_metadata(camera_metadata_t *dst, const camera_metadata_t *src);
 int add_camera_metadata_entry(camera_metadata_t *, uint32_t tag, const void *data, size_t count);
 int find_camera_metadata_ro_entry(const camera_metadata_t *, uint32_t tag, camera_metadata_ro_entry_t *);
+int find_camera_metadata_entry(camera_metadata_t *, uint32_t tag, camera_metadata_ro_entry_t *);
+camera_metadata_t *clone_camera_metadata(const camera_metadata_t *);
 size_t get_camera_metadata_entry_count(const camera_metadata_t *);
 size_t get_camera_metadata_data_count(const camera_metadata_t *);
 int get_camera_metadata_tag_type(uint32_t tag);
@@ -136,6 +143,9 @@ static vendor_tag_ops_t g_vtops; /* filled by the real layer; outlives every use
 
 /* Each camera device the provider opens is a proxy_t (see "per-session routing proxy" below). */
 #define OPS_SLOTS 18   /* camera3_device_ops: 10 entry points + reserved[8] (QTI extensions) */
+#define CB_SLOTS 16    /* camera3_callback_ops: 4 entry points; spare slots forward too */
+#define REQ_RING 256   /* requests in flight are far fewer than this */
+#define ADJ_RING 16
 typedef struct proxy {
     camera3_device_t dev;          /* what the provider holds; dev.ops -> ops[] */
     camera3_device_t *backend;     /* offset 136: read by the trampolines */
@@ -145,9 +155,22 @@ typedef struct proxy {
     char id[16];
     camera_metadata_t *session_params; /* our copy with the package tag; freed on the next
                                           configure or on close */
+    /* Frame-timestamp fix for OnePlus sessions (see "Out-of-order frames" below) */
+    struct {
+        void *ops[CB_SLOTS];           /* the camera3_callback_ops the OnePlus layer is given */
+        const void *orig;              /* offset 128: the provider's own callback ops */
+    } cbw;
+    int ts_lock, tsfix;
+    uint8_t last_zsl, last_still;      /* from the last request that carried settings */
+    uint64_t last_ts;                  /* newest shutter timestamp passed on */
+    struct { uint32_t frame; uint8_t valid, exempt; } req[REQ_RING];
+    struct { uint32_t frame; uint8_t valid; uint64_t orig, fixed; } adj[ADJ_RING];
+    unsigned adj_next;
 } proxy_t;
 _Static_assert(__builtin_offsetof(camera3_device_t, ops) == 120, "camera3_device layout");
 _Static_assert(__builtin_offsetof(proxy_t, backend) == 136, "proxy layout");
+_Static_assert(__builtin_offsetof(proxy_t, cbw.orig) - __builtin_offsetof(proxy_t, cbw) == 128,
+               "callback wrapper layout");
 
 /* add_camera_metadata_entry needs the tag's type. If no vendor tag ops are registered in this
  * process, register the real layer's own ops (the same table the HAL serves to cameraserver). */
@@ -286,6 +309,9 @@ static int oem_configure(proxy_t *p, camera3_stream_configuration_t *cfg) {
 
 /* Forward slot i to the current backend with the backend as the device argument; every argument
  * register and the stack are left untouched. A slot the backend leaves NULL returns -ENOSYS. */
+#ifdef OEMWRAP_HOST_TEST
+#define TRAMP(i) static void tramp_##i(void) {}
+#else
 #define TRAMP(i) \
     __attribute__((naked)) static void tramp_##i(void) { \
         __asm__ volatile("hint #34\n"                 /* bti c */ \
@@ -297,6 +323,7 @@ static int oem_configure(proxy_t *p, camera3_stream_configuration_t *cfg) {
                          "br x17\n" \
                          "1: mov x0, #-38\n" \
                          "ret\n"); }
+#endif
 TRAMP(0) TRAMP(1) TRAMP(2) TRAMP(3) TRAMP(4) TRAMP(5) TRAMP(6) TRAMP(7) TRAMP(8)
 TRAMP(9) TRAMP(10) TRAMP(11) TRAMP(12) TRAMP(13) TRAMP(14) TRAMP(15) TRAMP(16) TRAMP(17)
 static void (*const kTramp[OPS_SLOTS])(void) = {
@@ -319,7 +346,7 @@ static const void *g_cb_state = (const void *)1; /* unknown until first set */
 static int g_cb_lock;
 static void update_oplus_callbacks(void) {
     if (!g_set_oplus_cb || !g_oplus_cb) return;
-    while (__atomic_exchange_n(&g_cb_lock, 1, __ATOMIC_ACQUIRE)) __asm__ volatile("yield");
+    while (__atomic_exchange_n(&g_cb_lock, 1, __ATOMIC_ACQUIRE)) CPU_RELAX();
     const void *want = (__atomic_load_n(&g_open_oem, __ATOMIC_SEQ_CST) > 0 ||
                         __atomic_load_n(&g_open_direct, __ATOMIC_SEQ_CST) == 0) ? g_oplus_cb : 0;
     int changed = want != g_cb_state;
@@ -369,11 +396,180 @@ static void adopt_backend(proxy_t *p, camera3_device_t *b, int oem) {
     p->dev.priv = b->priv;
 }
 
+/* ---------------------------------------------------------------- out-of-order frames
+ *
+ * For portrait and other multi-frame shots OnePlus's HAL builds part of the burst from frames it
+ * captured just before the shutter and re-stamps them a few nanoseconds after their original time,
+ * so a frame's shutter timestamp can be older than the previous frame's. Android's camera service
+ * (Camera3Stream::returnBuffer) then marks that frame's buffers as errors unless the request was a
+ * reprocess or a ZSL still capture; the app gets 6 of 7 frames and its shutter stays busy.
+ *
+ * For OnePlus sessions only, the wrapper sits between the layer and the provider's callbacks and
+ * raises such a timestamp to 1 ns after the previous one (readout time moved by the same amount),
+ * and writes the same value into that frame's android.sensor.timestamp result, so the image and
+ * its result still match. Frames the camera service exempts (reprocess, ZSL still capture) are
+ * passed on unchanged, and nothing is changed while timestamps increase. Other apps' sessions run
+ * on Qualcomm's HAL with the provider's own callbacks. Disable with
+ * setprop persist.vendor.camera.oplus_los.tsfix 0 (read when a session starts).
+ */
+#define CAMERA3_MSG_SHUTTER 2
+#define TAG_SENSOR_TIMESTAMP 0xE0010    /* android.sensor.timestamp */
+#define TAG_CAPTURE_INTENT   0x1000D    /* android.control.captureIntent */
+#define TAG_ENABLE_ZSL       0x10029    /* android.control.enableZsl */
+#define INTENT_STILL_CAPTURE 2
+/* Qualcomm camera3 ABI, offsets checked against camera.qcom.so's own logging of these structs */
+#define MSG_TYPE(m)       (*(const int32_t *)((const char *)(m) + 0x00))
+#define MSG_FRAME(m)      (*(const uint32_t *)((const char *)(m) + 0x08))
+#define MSG_TS(m)         (*(uint64_t *)((char *)(m) + 0x10))
+#define MSG_READOUT(m)    (*(uint64_t *)((char *)(m) + 0x18))
+#define MSG_SIZE          0x20
+#define REQ_FRAME(r)      (*(const uint32_t *)((const char *)(r) + 0x00))
+#define REQ_SETTINGS(r)   (*(const camera_metadata_t *const *)((const char *)(r) + 0x08))
+#define REQ_INPUT(r)      (*(const void *const *)((const char *)(r) + 0x10))
+#define RES_FRAME(r)      (*(const uint32_t *)((const char *)(r) + 0x00))
+#define RES_META(r)       (*(const camera_metadata_t **)((char *)(r) + 0x08))
+
+static void ts_lock(proxy_t *p) { while (__atomic_exchange_n(&p->ts_lock, 1, __ATOMIC_ACQUIRE)) CPU_RELAX(); }
+static void ts_unlock(proxy_t *p) { __atomic_store_n(&p->ts_lock, 0, __ATOMIC_RELEASE); }
+static proxy_t *proxy_of_cb(const void *cb) { return (proxy_t *)((char *)cb - __builtin_offsetof(proxy_t, cbw)); }
+
+static int meta_u8(const camera_metadata_t *m, uint32_t tag, uint8_t *out) {
+    camera_metadata_ro_entry_t e;
+    if (find_camera_metadata_ro_entry(m, tag, &e) != 0 || e.count < 1) return 0;
+    *out = *(const uint8_t *)e.data;
+    return 1;
+}
+
+static int tsfix_enabled(void) {
+    char v[92] = {0};
+    __system_property_get("persist.vendor.camera.oplus_los.tsfix", v);
+    return !(v[0] == '0' && v[1] == 0);
+}
+
+/* device op 4, process_capture_request: note which frames the camera service exempts */
+static int proxy_request(const struct camera3_device *dev, void *req) {
+    proxy_t *p = (proxy_t *)dev;
+    int (*real)(const struct camera3_device *, void *) = ((void **)p->backend->ops)[4];
+    if (p->is_oem && p->tsfix && req) {
+        const camera_metadata_t *set = REQ_SETTINGS(req);
+        uint8_t v;
+        ts_lock(p);
+        if (set) {   /* NULL settings repeat the previous request's */
+            p->last_zsl = meta_u8(set, TAG_ENABLE_ZSL, &v) && v == 1;
+            p->last_still = meta_u8(set, TAG_CAPTURE_INTENT, &v) && v == INTENT_STILL_CAPTURE;
+        }
+        uint32_t f = REQ_FRAME(req);
+        p->req[f % REQ_RING].frame = f;
+        p->req[f % REQ_RING].valid = 1;
+        p->req[f % REQ_RING].exempt = REQ_INPUT(req) || (p->last_zsl && p->last_still);
+        ts_unlock(p);
+    }
+    return real(p->backend, req);
+}
+
+static void cb_notify(const void *cb, const void *msg) {
+    proxy_t *p = proxy_of_cb(cb);
+    void (*real)(const void *, const void *) = ((void *const *)p->cbw.orig)[1];
+    if (!msg || MSG_TYPE(msg) != CAMERA3_MSG_SHUTTER) { real(p->cbw.orig, msg); return; }
+    uint32_t f = MSG_FRAME(msg);
+    uint64_t ts = MSG_TS((void *)msg), prev = 0, fixed = 0;
+    ts_lock(p);
+    int known = p->req[f % REQ_RING].valid && p->req[f % REQ_RING].frame == f;
+    int exempt = known && p->req[f % REQ_RING].exempt;
+    if (known) p->req[f % REQ_RING].valid = 0;
+    if (known && !exempt && ts != 0) {
+        if (p->last_ts && ts <= p->last_ts) {
+            prev = p->last_ts;
+            fixed = prev + 1;
+            unsigned i = p->adj_next++ % ADJ_RING;
+            p->adj[i].frame = f; p->adj[i].orig = ts; p->adj[i].fixed = fixed; p->adj[i].valid = 1;
+            p->last_ts = fixed;
+        } else {
+            p->last_ts = ts;
+        }
+    }
+    ts_unlock(p);
+    if (!fixed) { real(p->cbw.orig, msg); return; }
+    uint64_t copy[MSG_SIZE / 8];
+    memcpy(copy, msg, MSG_SIZE);
+    MSG_TS(copy) = fixed;
+    if (MSG_READOUT(copy)) MSG_READOUT(copy) += fixed - ts;
+    __android_log_print(LOG_I, TAG, "camera %s frame %u: shutter %llu older than previous %llu, sent as %llu",
+                        p->id, f, (unsigned long long)ts, (unsigned long long)prev, (unsigned long long)fixed);
+    real(p->cbw.orig, copy);
+}
+
+static void cb_result(const void *cb, const void *res) {
+    proxy_t *p = proxy_of_cb(cb);
+    void (*real)(const void *, const void *) = ((void *const *)p->cbw.orig)[0];
+    const camera_metadata_t *meta = res ? RES_META((void *)res) : 0;
+    uint64_t orig = 0, fixed = 0;
+    if (meta) {
+        uint32_t f = RES_FRAME(res);
+        ts_lock(p);
+        for (int i = 0; i < ADJ_RING; i++)
+            if (p->adj[i].valid && p->adj[i].frame == f) { orig = p->adj[i].orig; fixed = p->adj[i].fixed; break; }
+        ts_unlock(p);
+    }
+    camera_metadata_t *mine = 0;
+    if (fixed) {
+        camera_metadata_ro_entry_t e;
+        if (find_camera_metadata_ro_entry(meta, TAG_SENSOR_TIMESTAMP, &e) == 0 && e.count == 1 &&
+            *(const int64_t *)e.data == (int64_t)orig && (mine = clone_camera_metadata(meta)) != 0 &&
+            find_camera_metadata_entry(mine, TAG_SENSOR_TIMESTAMP, &e) == 0 && e.count == 1) {
+            *(int64_t *)e.data = (int64_t)fixed;
+        } else if (mine) {
+            free_camera_metadata(mine);
+            mine = 0;
+        }
+    }
+    if (!mine) { real(p->cbw.orig, res); return; }
+    /* The result struct is Qualcomm's extended layout (private fields after the AOSP ones), so it
+     * is not copied: the metadata pointer is swapped for this call only. The provider copies the
+     * metadata before returning. */
+    RES_META((void *)res) = mine;
+    real(p->cbw.orig, res);
+    RES_META((void *)res) = meta;
+    free_camera_metadata(mine);
+}
+
+/* Forward callback slot i to the provider's own callback ops, as the provider's own first argument */
+#ifdef OEMWRAP_HOST_TEST
+#define CBTRAMP(i) static void cbtramp_##i(void) {}
+#else
+#define CBTRAMP(i) \
+    __attribute__((naked)) static void cbtramp_##i(void) { \
+        __asm__ volatile("hint #34\n"                 /* bti c */ \
+                         "ldr x16, [x0, #128]\n"      /* cbw.orig */ \
+                         "ldr x17, [x16, #" #i "*8]\n" \
+                         "mov x0, x16\n" \
+                         "br x17\n"); }
+#endif
+CBTRAMP(2) CBTRAMP(3) CBTRAMP(4) CBTRAMP(5) CBTRAMP(6) CBTRAMP(7) CBTRAMP(8) CBTRAMP(9)
+CBTRAMP(10) CBTRAMP(11) CBTRAMP(12) CBTRAMP(13) CBTRAMP(14) CBTRAMP(15)
+
+/* The callback ops a backend is initialised with: ours for the OnePlus layer (fix enabled), the
+ * provider's own for Qualcomm's HAL, so other apps' sessions are untouched. */
+static const void *cb_for(proxy_t *p, int oem) {
+    if (!oem || !p->tsfix || !p->cb) return p->cb;
+    void **o = p->cbw.ops;
+    o[0] = (void *)cb_result;
+    o[1] = (void *)cb_notify;
+    o[2] = (void *)cbtramp_2;   o[3] = (void *)cbtramp_3;   o[4] = (void *)cbtramp_4;
+    o[5] = (void *)cbtramp_5;   o[6] = (void *)cbtramp_6;   o[7] = (void *)cbtramp_7;
+    o[8] = (void *)cbtramp_8;   o[9] = (void *)cbtramp_9;   o[10] = (void *)cbtramp_10;
+    o[11] = (void *)cbtramp_11; o[12] = (void *)cbtramp_12; o[13] = (void *)cbtramp_13;
+    o[14] = (void *)cbtramp_14; o[15] = (void *)cbtramp_15;
+    p->cbw.orig = p->cb;
+    return &p->cbw;
+}
+
 static int proxy_initialize(const struct camera3_device *dev, const void *cb) {
     proxy_t *p = (proxy_t *)dev;
     p->cb = cb;
     p->initialized = 1;
-    return p->backend->ops->initialize(p->backend, cb);
+    p->tsfix = tsfix_enabled();
+    return p->backend->ops->initialize(p->backend, cb_for(p, p->is_oem));
 }
 
 /* Move the device to the other backend between sessions (configure_streams is only called with
@@ -383,7 +579,7 @@ static int switch_backend(proxy_t *p, int oem) {
     close_backend(p);
     camera3_device_t *b = 0;
     int r = open_backend(p, oem, &b);
-    if (r == 0 && p->initialized && (r = b->ops->initialize(b, p->cb)) != 0) {
+    if (r == 0 && p->initialized && (r = b->ops->initialize(b, cb_for(p, oem))) != 0) {
         b->common.close(&b->common);
         __atomic_sub_fetch(oem ? &g_open_oem : &g_open_direct, 1, __ATOMIC_SEQ_CST);
         update_oplus_callbacks();
@@ -397,7 +593,7 @@ static int switch_backend(proxy_t *p, int oem) {
     __android_log_print(LOG_E, TAG, "camera %s: could not move session (%d), staying", p->id, r);
     if (open_backend(p, was, &b) == 0) {
         adopt_backend(p, b, was);
-        if (p->initialized) b->ops->initialize(b, p->cb);
+        if (p->initialized) b->ops->initialize(b, cb_for(p, was));
     }
     return r;
 }
@@ -435,6 +631,7 @@ static int wrap_open(const struct hw_module_t *mod, const char *id, struct hw_de
         p->ops[i] = ((void **)b->ops)[i] ? (void *)kTramp[i] : 0;
     p->ops[0] = (void *)proxy_initialize;
     p->ops[1] = (void *)proxy_configure;
+    if (p->ops[4]) p->ops[4] = (void *)proxy_request;
     p->dev.ops = (camera3_device_ops_t *)p->ops;
     adopt_backend(p, b, 1);
     *out = &p->dev.common;

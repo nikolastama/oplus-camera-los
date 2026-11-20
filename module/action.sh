@@ -1,5 +1,6 @@
 #!/system/bin/sh
-# Module action button: save one complete debug bundle to Download (nothing on the system is changed).
+# Module action button: save one complete debug bundle to Download (nothing on the system is changed),
+# or run the self-test (selftest.sh).
 # Everything is unfiltered so a single run answers as many questions as possible.
 MODDIR=${0%/*}
 TS=$(date +%Y%m%d-%H%M%S)
@@ -12,6 +13,19 @@ DBG=/data/local/tmp/ocam-debug-props.txt
 DEBUG_PROPS="persist.camera.aps.core.infoMask persist.camera.aps.core.debugMask persist.camera.aps.core.warningMask
   persist.vendor.camera.oplus.enableLogging persist.camera.logWarningMask oplus.autotest.camera.debug.forcelog
   persist.camera.assert.panic persist.sys.assert.panic"
+# A fresh press offers the self-test (selftest.sh) instead of a debug run. Volume up: self-test.
+# Volume down, no key within 10 s, or no key reader: the debug bundle, as before.
+if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ] && [ -f "$MODDIR/selftest.sh" ] \
+   && command -v getevent >/dev/null; then
+  echo "Volume up: self-test (about 2 minutes, phone unlocked)"
+  echo "Volume down, or wait 10 seconds: debug bundle"
+  KEY=$(timeout 10 getevent -lq 2>/dev/null | grep -m1 -oE 'KEY_VOLUME(UP|DOWN)')
+  if [ "$KEY" = KEY_VOLUMEUP ]; then
+    sh "$MODDIR/selftest.sh"
+    exit 0
+  fi
+  echo ""
+fi
 if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
   touch /data/local/tmp/ocam-snapshot.pending
   # Turn on the camera app's own processing (APS) logs and the HAL's logs for this debug run
@@ -65,16 +79,15 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "== cam_alog"; ls -laZ /data/vendor/cam_alog 2>&1 | head -40
   echo "== logd buffer"; logcat -g 2>&1 | head -6
   echo "== app uid"; stat -c %u /data/data/com.oplus.camera 2>&1
+  echo "== compiled code (precompile: $(cat "$MODDIR/.precompiled" 2>/dev/null || echo not run))"; dumpsys package com.oplus.camera 2>/dev/null | grep -m2 "status="
   echo "== library fixes (module copies of ROM files)"
   cat "$MODDIR/.fixed" 2>&1
   F=/odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so
   echo "offline service @0x1b394: $(od -An -tx1 -j 111508 -N 4 "$F" | tr -d ' \n') (1b2f40b9 = fixed, 1b1f40b9 = stock)"
   F=/odm/lib64/libAlgoProcess.so
   echo "libAlgoProcess @0x1c9f38: $(od -An -tx1 -j 1875768 -N 4 "$F" | tr -d ' \n') (e93341b9 = fixed, e97740f9 = stock)"
-  F=/system/bin/cameraserver
-  echo "cameraserver @0x230948: $(od -An -tx1 -j 2296136 -N 4 "$F" | tr -d ' \n') (1f2003d5 = fixed, e82300b9 = stock)"
-  [ -f "$MODDIR/rom_updated.notified" ] && echo "!! camera service fix dropped after a ROM update: $(cat "$MODDIR/rom_updated.notified")"
-  ls -lZ /system/bin/cameraserver
+  echo "frame-timestamp fix (wrapper): persist.vendor.camera.oplus_los.tsfix=$(getprop persist.vendor.camera.oplus_los.tsfix) (empty = on)"
+  ls -lZ /system/bin/cameraserver   # the ROM's own; the module doesn't replace it since v0.37
   ls -lZ /odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /odm/lib64/libAlgoProcess.so 2>&1
   grep -h "offlinecamera-service-impl\|camera.oemlayer" /proc/$(pidof vendor.qti.camera.provider-service_64 | cut -d" " -f1)/maps 2>/dev/null | awk '{print $6}' | sort -u
 } > "$W/summary.txt" 2>&1
@@ -89,7 +102,6 @@ ls -la /data/tombstones > "$W/tombstones-list.txt" 2>&1
 # newest few tombstones (text form), they carry full register/stack info for native crashes
 for t in $(ls -t /data/tombstones/tombstone_[0-9][0-9] 2>/dev/null | head -4); do cp "$t" "$W/" 2>/dev/null; done
 # the device's own camera service binaries, so fixes can be checked against the exact build
-# (cameraserver is the module's fixed copy while that fix is active, see summary.txt)
 mkdir -p "$W/bin"
 for f in /system/lib64/libcameraservice.so /system/bin/cameraserver /system/lib64/libcamera_client.so \
          /system/lib64/libcamera2ndk.so /system/lib64/libcamera_metadata.so; do

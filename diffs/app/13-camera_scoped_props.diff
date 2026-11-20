@@ -1,0 +1,26 @@
+diff --git a/smali/s3/i.smali b/smali/s3/i.smali
+index 693875f..003c5dc 100644
+--- a/smali/s3/i.smali
++++ b/smali/s3/i.smali
+@@ -262,7 +262,7 @@
+ 
+     .line 2
+     :try_start_0
+-    const-string v1, "android.os.SystemProperties"
++    const-string v1, "com.oplus.camera.los.LosProps"
+ 
+     .line 3
+     .line 4
+diff --git a/smali_classes27/d3/a.smali b/smali_classes27/d3/a.smali
+index 9da88e7..0dc90d6 100644
+--- a/smali_classes27/d3/a.smali
++++ b/smali_classes27/d3/a.smali
+@@ -122,7 +122,7 @@
+     .line 2
+     .line 3
+     :try_start_0
+-    const-string v1, "android.os.SystemProperties"
++    const-string v1, "com.oplus.camera.los.LosProps"
+ 
+     .line 4
+     .line 5

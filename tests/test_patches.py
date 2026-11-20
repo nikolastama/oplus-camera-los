@@ -18,11 +18,16 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / 'tools'))
 import patches as P  # noqa: E402
 
+# Checked by tools/make_diffs.py instead, which runs every patch on a full decode of the stock file.
 NEEDS_FULL_SOURCE = {
     'camera_blur_seginit_guard',
     'camera_defer_ufs_probe',
     'camera_gallery_fallback',
     'sdk_session_package_tag',
+    'camera_no_telemetry',  # anchors on method headers far above the changed lines
+    'camera_hide_dead_settings',  # checks the namespace declared at the top of the file
+    'camera_scoped_props',  # counts both reflective reads in their whole files
+    'stubs_scoped_props',  # adds a new class file
 }
 
 
