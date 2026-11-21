@@ -58,9 +58,11 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) { (void
 void *dlopen(const char *n, int f) { (void)n; (void)f; return 0; }
 void *dlsym(void *h, const char *n) { (void)h; (void)n; return 0; }
 static char g_prop_tsfix[8] = "";
+static char g_prop_encbuf[8] = "";
 int __system_property_get(const char *k, char *v) {
     v[0] = 0;
     if (!strcmp(k, "persist.vendor.camera.oplus_los.tsfix")) strcpy(v, g_prop_tsfix);
+    if (!strcmp(k, "persist.vendor.camera.oplus_los.encbuf")) strcpy(v, g_prop_encbuf);
     return (int)strlen(v);
 }
 
@@ -117,10 +119,12 @@ static void hal_result(uint32_t f, const camera_metadata_t *meta) {
 }
 static camera_metadata_t g_set_zsl_still, g_set_plain, g_set_still_only;
 
+/* submit a request the way camx.device-impl.so does: through the device's ops table, QTI slot 5 */
 static void request(proxy_t *p, uint32_t f, const camera_metadata_t *set, int input) {
     request_t r; memset(&r, 0, sizeof(r));
     r.frame = f; r.settings = set; r.input = input ? (void *)&r : 0;
-    proxy_request(&p->dev, &r);
+    int (*pcr)(const camera3_device_t *, void *) = ((void **)p->dev.ops)[OP_PROCESS_CAPTURE_REQUEST];
+    pcr(&p->dev, &r);
 }
 static camera_metadata_t meta_ts(int64_t ts) {
     camera_metadata_t m = {0};
@@ -131,7 +135,7 @@ static proxy_t *new_session(int oem) {
     proxy_t *p = calloc(1, sizeof(*p));
     strcpy(p->id, "0");
     memcpy(&p->dev, &g_layer_dev, sizeof(p->dev));
-    p->ops[4] = (void *)proxy_request;
+    p->ops[OP_PROCESS_CAPTURE_REQUEST] = (void *)proxy_request;
     p->dev.ops = (camera3_device_ops_t *)p->ops;
     p->backend = &g_layer_dev;
     p->is_oem = oem;
@@ -148,6 +152,8 @@ static int fake_config(const struct camera3_device *d, camera3_stream_configurat
 static int fake_open(int oem, struct hw_device_t **out) {
     fake_dev_t *f = calloc(1, sizeof(*f));
     f->ops[0] = (void *)fake_init; f->ops[1] = (void *)fake_config;
+    f->ops[4] = (void *)fake_init;                                      /* QTI's extra entry */
+    f->ops[OP_PROCESS_CAPTURE_REQUEST] = (void *)layer_request;
     f->d.ops = (camera3_device_ops_t *)f->ops;
     f->d.common.close = fake_close;
     f->oem = oem;
@@ -180,7 +186,7 @@ static int is_oem_backend(struct hw_device_t *d) { return ((fake_dev_t *)((proxy
 
 int main(void) {
     g_prov.result = prov_result; g_prov.notify = prov_notify;
-    g_layer_ops[0] = (void *)layer_init; g_layer_ops[4] = (void *)layer_request;
+    g_layer_ops[0] = (void *)layer_init; g_layer_ops[OP_PROCESS_CAPTURE_REQUEST] = (void *)layer_request;
     g_layer_dev.ops = (camera3_device_ops_t *)g_layer_ops;
     g_set_zsl_still.n = 2;
     g_set_zsl_still.e[0].tag = TAG_ENABLE_ZSL; g_set_zsl_still.e[0].u8 = 1; g_set_zsl_still.e[0].is_u8 = 1;
@@ -326,6 +332,58 @@ int main(void) {
     ((camera3_device_t *)d)->ops->initialize((camera3_device_t *)d, &g_prov);
     CHECK(configure_with(d, 0, &sp_other) == 0 && !is_oem_backend(d), "a session without OnePlus settings should move");
     d->close(d);
+
+    /* 16. the request hook sits in QTI's process_capture_request slot (5), not AOSP's 4 */
+    d = 0;
+    CHECK(wrap_open(0, "1", &d) == 0 && d, "open failed");
+    {
+        void **ops = (void **)((camera3_device_t *)d)->ops;
+        CHECK(ops[OP_PROCESS_CAPTURE_REQUEST] == (void *)proxy_request, "request hook not in slot %d", OP_PROCESS_CAPTURE_REQUEST);
+        CHECK(ops[4] != (void *)proxy_request, "slot 4 is QTI's extra entry, must only be forwarded");
+    }
+    d->close(d);
+
+    /* 17. the front-camera face shot captured on the phone (v0.38-beta diagnostic): a 7-frame burst
+     *     whose shutters (frames 58..64) reuse pre-shutter frames, two of them re-stamped +9 ns.
+     *     Every one must reach the camera service strictly after the previous shutter. */
+    {
+        proxy_t *q = new_session(1);
+        static const uint64_t burst[] = {1857783295341ULL, 1857844271903ULL, 1857905248466ULL, 1857966225028ULL,
+                                         1857999534507ULL, 1857783295350ULL, 1857844271912ULL};
+        uint64_t prev = 0;
+        for (uint32_t f = 50; f < 58; f++) {          /* preview frames before the shot; the last */
+            request(q, f, f == 50 ? &g_set_plain : 0, 0);   /* one is the newest frame the burst reuses */
+            hal_shutter(f, f == 57 ? 1857999534507ULL : 1857600000000ULL + (f - 50) * 57000000ULL, 0);
+            CHECK(g_seen_ts > prev, "preview frame %u changed order", f);
+            prev = g_seen_ts;
+        }
+        for (uint32_t i = 0; i < 7; i++) {
+            request(q, 58 + i, i == 0 ? &g_set_still_only : 0, 0);
+        }
+        for (uint32_t i = 0; i < 7; i++) {
+            hal_shutter(58 + i, burst[i], 0);
+            CHECK(g_seen_ts > prev, "burst frame %u sent as %llu, not after %llu", 58 + i,
+                  (unsigned long long)g_seen_ts, (unsigned long long)prev);
+            prev = g_seen_ts;
+            camera_metadata_t mb = meta_ts((int64_t)burst[i]);
+            hal_result(58 + i, &mb);
+            CHECK(g_seen_meta_ts == (int64_t)prev, "burst frame %u result %lld != shutter %llu", 58 + i,
+                  (long long)g_seen_meta_ts, (unsigned long long)prev);
+        }
+        CHECK(g_live_meta == 0, "burst leaked metadata (%d)", g_live_meta);
+        free(q);
+    }
+
+    /* 15. encoder buffer cap: default 40, tunable 8..63, 0 = no cap, anything else -> default */
+    static const struct { const char *v; uint32_t want; } caps[] = {
+        {"", 40}, {"48", 48}, {"8", 8}, {"63", 63}, {"0", 0}, {"64", 40}, {"7", 40},
+        {"abc", 40}, {"4x", 40}, {"1000", 40}, {"-1", 40},
+    };
+    for (unsigned i = 0; i < sizeof(caps) / sizeof(caps[0]); i++) {
+        strcpy(g_prop_encbuf, caps[i].v);
+        CHECK(encoder_cap() == caps[i].want, "encbuf '%s' -> %u, want %u", caps[i].v, encoder_cap(), caps[i].want);
+    }
+    g_prop_encbuf[0] = 0;
 
     CHECK(g_live_meta == 0, "metadata leaked at end (%d)", g_live_meta);
     if (failures) { printf("%d check(s) failed\n", failures); return 1; }

@@ -42,6 +42,26 @@ precompile &
 # the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
 [ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
 
+# Watchdog for the OFE helper-library fix (customize.sh, fix 3): two camera-HAL crashes running
+# through the fixed loader or libdscaalgo within 10 minutes of boot take the three files out of the
+# module, so the next boot uses the ROM's own loader again (DSCA off, as on LineageOS).
+O="$MODDIR/system/odm/lib64/libcamxofehwl.so"
+ofe_watchdog() {
+  j=0
+  while [ $j -lt 20 ] && [ -f "$O" ]; do
+    sleep 30; j=$((j+1))
+    N=$(logcat -d -b crash 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*/odm/lib64/(libcamxofehwl|libdscaalgo|libcamxtintlessalgo)\.so" | awk '{print $3}' | sort -u | wc -l)
+    if [ "${N:-0}" -ge 2 ]; then
+      rm -f "$O" "$MODDIR/system/odm/lib64/libdscaalgo.so" "$MODDIR/system/odm/lib64/libcamxtintlessalgo.so"
+      echo "$(date) provider_crashes=$N" > "$MODDIR/ofe_dsca_disabled"
+      rm -f "$MODDIR/.pruned"
+      cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los_ofe \
+        "The DSCA library fix made the camera HAL crash, so it has been switched off. Reboot to restore the camera." >/dev/null 2>&1
+    fi
+  done
+}
+[ -f "$O" ] && ofe_watchdog &
+
 # Watchdog for the OnePlus camera layer: if the camera HAL keeps dying after boot, take the layer
 # out of the module so the next boot is back to LineageOS's own camera path, and tell the user.
 L="$MODDIR/system/odm/lib64/hw/camera.oemlayer.v2.so"

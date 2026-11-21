@@ -145,6 +145,13 @@ static vendor_tag_ops_t g_vtops; /* filled by the real layer; outlives every use
 
 /* Each camera device the provider opens is a proxy_t (see "per-session routing proxy" below). */
 #define OPS_SLOTS 18   /* camera3_device_ops: 10 entry points + reserved[8] (QTI extensions) */
+/* QTI's camera3_device_ops has one entry more than AOSP's before process_capture_request, so
+ * requests arrive in slot 5, not AOSP's 4 (and every later entry is shifted by one).
+ * camx.device-impl.so calls +0x28 for process_capture_request, +0x18 construct_default_request_settings,
+ * +0x40 flush, +0x48 signal_stream_flush, +0x50 is_reconfiguration_required. Up to v0.38-beta the
+ * wrapper hooked slot 4, which the provider never calls, so the frame-timestamp fix never saw a
+ * request and passed every frame through as unknown (front-camera face shots hung). */
+#define OP_PROCESS_CAPTURE_REQUEST 5
 #define CB_SLOTS 16    /* camera3_callback_ops: 4 entry points; spare slots forward too */
 #define REQ_RING 256   /* requests in flight are far fewer than this */
 #define ADJ_RING 16
@@ -228,8 +235,23 @@ static void find_pkg_tag(void) {
  * undequeued buffers. In some video modes (1080p60 / stabilisation) OnePlus's HAL asks for 64,
  * which made cameraserver refuse the whole session ("Unable to set buffer count", -38): black
  * preview, then -22 on retries because the encoder surface was left connected. 42 is known to
- * work at 1080p; cap at 40. Fewer buffers only limits how many frames the HAL holds at once. */
+ * work at 1080p; cap at 40. Fewer buffers only limits how many frames the HAL holds at once, but
+ * stabilised modes hold frames back for look-ahead, so the cap is tunable for testing 4K60/EIS:
+ * setprop persist.vendor.camera.oplus_los.encbuf N (8..63; 0 = no cap; read at each configure). */
 #define ENCODER_MAX_BUFFERS 40
+
+static uint32_t encoder_cap(void) {
+    char v[92] = {0};
+    __system_property_get("persist.vendor.camera.oplus_los.encbuf", v);
+    if (!v[0]) return ENCODER_MAX_BUFFERS;
+    uint32_t n = 0;
+    for (int i = 0; v[i]; i++) {
+        if (v[i] < '0' || v[i] > '9' || i > 2) return ENCODER_MAX_BUFFERS;
+        n = n * 10 + (uint32_t)(v[i] - '0');
+    }
+    if (n == 0) return 0;                       /* 0: leave the HAL's request alone */
+    return (n >= 8 && n <= 63) ? n : ENCODER_MAX_BUFFERS;
+}
 #define FMT_RAW16          0x20
 #define USAGE_OPLUS_META   0x40      /* SurfaceDecision: "surface_key_picture_metadata" -> 0x40 */
 #define USECASE_OPLUS_META 0x10002   /* advertised in android.scaler.availableStreamUseCases;
@@ -262,13 +284,18 @@ static int configure_and_cap(const struct camera3_device *dev, camera3_stream_co
     for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++)
         if (cfg->streams[i] && (STREAM_USAGE(cfg->streams[i]) & USAGE_VIDEO_ENCODER)) enc |= 1ULL << i;
     int r = real(dev, cfg);
+    uint32_t cap = enc ? encoder_cap() : 0;
     if (r == 0 && enc) {
         for (uint32_t i = 0; i < cfg->num_streams && i < 64; i++) {
             void *st = cfg->streams[i];
-            if ((enc >> i & 1) && st && STREAM_MAXBUF(st) > ENCODER_MAX_BUFFERS) {
+            if (!(enc >> i & 1) || !st) continue;
+            if (cap && STREAM_MAXBUF(st) > cap) {
                 __android_log_print(LOG_I, TAG, "stream %u (%ux%u encoder): max_buffers %u -> %u", i,
-                                    STREAM_W(st), STREAM_H(st), STREAM_MAXBUF(st), ENCODER_MAX_BUFFERS);
-                STREAM_MAXBUF(st) = ENCODER_MAX_BUFFERS;
+                                    STREAM_W(st), STREAM_H(st), STREAM_MAXBUF(st), cap);
+                STREAM_MAXBUF(st) = cap;
+            } else {
+                __android_log_print(LOG_I, TAG, "stream %u (%ux%u encoder): max_buffers %u (cap %u)", i,
+                                    STREAM_W(st), STREAM_H(st), STREAM_MAXBUF(st), cap);
             }
         }
     }
@@ -449,10 +476,10 @@ static int tsfix_enabled(void) {
     return !(v[0] == '0' && v[1] == 0);
 }
 
-/* device op 4, process_capture_request: note which frames the camera service exempts */
+/* process_capture_request (QTI slot 5): note which frames the camera service exempts */
 static int proxy_request(const struct camera3_device *dev, void *req) {
     proxy_t *p = (proxy_t *)dev;
-    int (*real)(const struct camera3_device *, void *) = ((void **)p->backend->ops)[4];
+    int (*real)(const struct camera3_device *, void *) = ((void **)p->backend->ops)[OP_PROCESS_CAPTURE_REQUEST];
     if (p->is_oem && p->tsfix && req) {
         const camera_metadata_t *set = REQ_SETTINGS(req);
         uint8_t v;
@@ -672,7 +699,7 @@ static int wrap_open(const struct hw_module_t *mod, const char *id, struct hw_de
         p->ops[i] = ((void **)b->ops)[i] ? (void *)kTramp[i] : 0;
     p->ops[0] = (void *)proxy_initialize;
     p->ops[1] = (void *)proxy_configure;
-    if (p->ops[4]) p->ops[4] = (void *)proxy_request;
+    if (p->ops[OP_PROCESS_CAPTURE_REQUEST]) p->ops[OP_PROCESS_CAPTURE_REQUEST] = (void *)proxy_request;
     p->dev.ops = (camera3_device_ops_t *)p->ops;
     adopt_backend(p, b, 1);
     *out = &p->dev.common;

@@ -133,6 +133,41 @@ fixlib /odm/lib64/libAlgoProcess.so "$MODPATH/system/odm/lib64/libAlgoProcess.so
   e86f40f9e97740f98b008052eae740b9ecf740b9ed0741b9290108cb880e00f9290dca9a8b320a29 \
   e86f40f9e93341b98b008052eae740b9ec030a2aed030a2a297d0011880e00f929691b128b320a29 "Camera processing library"
 
+# 3) Qualcomm's offline front end (vendor, libcamxofehwl) builds two helper-library paths from one
+#    "/vendor/lib64" string: libcamxtintlessalgo and libdscaalgo (the SWDSCA stage of the OFE's
+#    multi-pass HDR tone mapping). LineageOS doesn't ship libdscaalgo, so the OFE logged "Failed to
+#    open DSCA library" and ran without it. The module ships OxygenOS's libdscaalgo on /odm/lib64;
+#    this fix points that one prefix at "/odm/lib64" (NUL-padded, same length), and ofe_helpers puts
+#    a copy of the ROM's own tintless library next to it, so both loads find their library. The
+#    fixed copy shadows the ROM's by search order (camera.qcom loads it by name), like 1).
+fixlib /vendor/lib64/libcamxofehwl.so "$MODPATH/system/odm/lib64/libcamxofehwl.so" 202327 \
+  2573257325732e2573002f76656e646f722f6c6962363400 2573257325732e2573002f6f646d2f6c6962363400000000 "OFE helper libraries (DSCA)"
+ofe_helpers() {  # all three files or none: a fixed loader without its helpers would lose tintless
+  ofe="$MODPATH/system/odm/lib64/libcamxofehwl.so"; tl="$MODPATH/system/odm/lib64/libcamxtintlessalgo.so"
+  dsca="$MODPATH/system/odm/lib64/libdscaalgo.so"; rm -f "$tl"
+  if [ -f "$ofe" ] && [ -f "$dsca" ] && cp -p /vendor/lib64/libcamxtintlessalgo.so "$tl" 2>/dev/null \
+     && cmp -s /vendor/lib64/libcamxtintlessalgo.so "$tl"; then
+    echo "${tl#$MODPATH/system/} $(ls -Z /vendor/lib64/libcamxtintlessalgo.so | awk '{print $1}')" >> "$FIXED"
+    return 0
+  fi
+  [ -f "$ofe" ] && ui_print "! OFE helper libraries (DSCA): helper libraries missing, fix removed"
+  rm -f "$ofe" "$tl" "$dsca"
+  [ -f "$FIXED" ] && { grep -v '^odm/lib64/libcamxofehwl\.so ' "$FIXED" > "$FIXED.tmp"; mv -f "$FIXED.tmp" "$FIXED"; }
+  return 1
+}
+ofe_helpers
+
+# 4) OnePlus's camera HW config (odm). LineageOS's extract-files rewrites it to "disable face
+#    detection AE behaviour": [FDManager] fdSupport TRUE -> FALSE (and enableSWfdForThirdCamUnit,
+#    which is left as LineageOS has it). With fdSupport off, OnePlus's FD manager never runs, so the
+#    OnePlus camera loses face-priority exposure/focus/white balance and face data for portrait and
+#    multi-subject modes (log: "AdjustFaceRectangle failed"). Put OxygenOS's value back. Same length:
+#    "TRUE;" plus a newline in place of "FALSE;" (an empty line is harmless in this file), so the
+#    fixed bytes also match OxygenOS's own file. The file is read by every camera client, so other
+#    apps get OxygenOS's FD behaviour too; to keep LineageOS's, comment this call out.
+fixlib /odm/etc/camera/CameraHWConfiguration.config "$MODPATH/system/odm/etc/camera/CameraHWConfiguration.config" 224011 \
+  6664537570706f727420202020202020202020202020202020203d2046414c53453b 6664537570706f727420202020202020202020202020202020203d20545255453b0a "Camera face detection (FDManager)"
+
 # Refuse if another copy of the OnePlus camera is already installed (ROM or other module)
 if pm path $PKG >/dev/null 2>&1 && [ ! -d $INSTALLED ]; then
   abort "! $PKG is already installed on this system. Remove it first."

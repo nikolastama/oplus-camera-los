@@ -61,7 +61,7 @@ All of it disappears with the module:
 
 | Area | Change |
 |---|---|
-| Files | New files on `/system_ext` (app, SDK, libraries, configs) and `/odm` (OnePlus camera layer). Two ROM files are replaced by fixed copies inside the module: `/odm/lib64/libAlgoProcess.so` overlaid, the offline camera service shadowed via `/odm/lib64`. Nothing under `/vendor`. |
+| Files | New files on `/system_ext` (app, SDK, libraries, configs) and `/odm` (OnePlus camera layer). Four ROM files are replaced by fixed copies inside the module: `/odm/lib64/libAlgoProcess.so` and `/odm/etc/camera/CameraHWConfiguration.config` overlaid, the offline camera service and Qualcomm's offline front end (`libcamxofehwl.so`) shadowed via `/odm/lib64` (with a copy of the ROM's `libcamxtintlessalgo.so` and OxygenOS's `libdscaalgo.so` beside it). Nothing under `/vendor`. |
 | Properties | One system-wide: a larger camera result queue (`ro.vendor.camera.res.fmq.size`). The OnePlus camera's own props are answered inside its process. `service.sh` adds `com.oplus.camera` to `persist.vendor.camera.privapp.list` (in memory; LineageOS's camera service applies it only to that package). Larger log buffers (16 MB, until the next reboot) only in debug mode: the Action button's first press, or `touch …/oplus_camera_los/debug` for every boot. |
 | SELinux | `sepolicy.rule`: a few rules for the camera app's data dirs, the DSP library watch, and the camera HAL reading system props. |
 | Data | `/data/system/camera_rus`, `/data/vendor/camera_rus` (created if absent); `/data/vendor/cam_alog`, `camera_process` and `camera_remote_dump` relabelled for the camera (original labels saved and restored on removal). |

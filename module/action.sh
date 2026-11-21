@@ -72,6 +72,7 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "== metamodule copy of this module (must not contain system/vendor)"; for r in /data/adb/metamodule/mnt /data/adb/modules/meta-overlayfs/mnt; do [ -d "$r/oplus_camera_los/system" ] && ls "$r/oplus_camera_los/system" | sed "s|^|$r: |"; done
   echo "== recent denials touching module paths"; logcat -d -b all 2>/dev/null | grep "avc: *denied" | grep -E 'dev="overlay"|name="hw"|oemlayer|OplusCamera' | tail -20
   [ -f "$MODDIR/oemlayer_disabled" ] && { echo "!! watchdog disabled the layer:"; cat "$MODDIR/oemlayer_disabled"; }
+  [ -f "$MODDIR/ofe_dsca_disabled" ] && { echo "!! watchdog disabled the OFE/DSCA fix:"; cat "$MODDIR/ofe_dsca_disabled"; }
   echo "== data dirs"; ls -ldZ /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_rus /data/system/camera_rus 2>&1
   echo "== relabeled"; cat "$MODDIR"/.relabeled/* 2>/dev/null
   echo "== camera_remote_dump"; ls -laZR /data/vendor/camera_remote_dump 2>&1 | head -60
@@ -86,6 +87,12 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "offline service @0x1b394: $(od -An -tx1 -j 111508 -N 4 "$F" | tr -d ' \n') (1b2f40b9 = fixed, 1b1f40b9 = stock)"
   F=/odm/lib64/libAlgoProcess.so
   echo "libAlgoProcess @0x1c9f38: $(od -An -tx1 -j 1875768 -N 4 "$F" | tr -d ' \n') (e93341b9 = fixed, e97740f9 = stock)"
+  F=/odm/lib64/libcamxofehwl.so
+  echo "OFE helper path @0x31661: $(od -An -tx1 -j 202337 -N 4 "$F" 2>/dev/null | tr -d ' \n') (2f6f646d = fixed /odm, missing = not applied)"
+  ls -lZ /odm/lib64/libcamxofehwl.so /odm/lib64/libcamxtintlessalgo.so /odm/lib64/libdscaalgo.so 2>&1
+  grep -h "libcamxofehwl\|libdscaalgo\|libcamxtintless" /proc/$(pidof vendor.qti.camera.provider-service_64 | cut -d" " -f1)/maps 2>/dev/null | awk '{print $6}' | sort -u
+  echo "face detection (HW config): $(grep -m1 -E 'fdSupport *=' /odm/etc/camera/CameraHWConfiguration.config 2>&1 | tr -s ' ') (TRUE = fixed, FALSE = LineageOS)"
+  echo "encoder buffer cap (wrapper): persist.vendor.camera.oplus_los.encbuf=$(getprop persist.vendor.camera.oplus_los.encbuf) (empty = 40, 0 = no cap)"
   echo "frame-timestamp fix (wrapper): persist.vendor.camera.oplus_los.tsfix=$(getprop persist.vendor.camera.oplus_los.tsfix) (empty = on)"
   ls -lZ /system/bin/cameraserver   # the ROM's own; the module doesn't replace it since v0.37
   ls -lZ /odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so /odm/lib64/libAlgoProcess.so 2>&1

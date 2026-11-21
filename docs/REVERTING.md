@@ -99,6 +99,8 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 |---|---|---|
 | Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `981a40f9e2031faa1b1f40b9000f40b9` → `…1b2f40b9…` |
 | Camera processing library | `/odm/lib64/libAlgoProcess.so` | see the two hex strings at the `fixlib` call |
+| OFE helper libraries (DSCA) | `/vendor/lib64/libcamxofehwl.so` (copy at `/odm/lib64`, plus a copy of the ROM's `libcamxtintlessalgo.so` and OxygenOS's `libdscaalgo.so` there) | `%s%s%s.%s\0/vendor/lib64\0` → `…/odm/lib64\0\0\0\0` at 0x31657. To go without it, comment out the `fixlib` call and `ofe_helpers` and drop `vendor/lib64/libdscaalgo.so` from `EXTRA_COPIES`. On the phone: delete `/data/adb/modules/oplus_camera_los/system/odm/lib64/libcamxofehwl.so` and reboot. |
+| Camera face detection (FDManager) | `/odm/etc/camera/CameraHWConfiguration.config` (overlaid) | `fdSupport = FALSE;` → `fdSupport = TRUE;\n`. Comment out the `fixlib` call to keep LineageOS's setting (face detection off for every app). On the phone: delete `/data/adb/modules/oplus_camera_los/system/odm/etc/camera/CameraHWConfiguration.config` and reboot. |
 
 ## 4b. Isolation (v0.32)
 

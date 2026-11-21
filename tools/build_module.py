@@ -65,6 +65,9 @@ ADAPTER_SRC = 'my_product/product_overlay/framework/com.oplus.camera.unit.sdk.ad
 # files copied as-is, beyond tools/selection.json (source -> module path)
 EXTRA_COPIES = {
     'odm/lib64/libOplusSecurity.so': 'odm/lib64/libOplusSecurity.so',
+    # SWDSCA stage of Qualcomm's offline front end; LineageOS doesn't ship it. Loaded from /odm by
+    # the install-time fix of libcamxofehwl (module/customize.sh, fix 3).
+    'vendor/lib64/libdscaalgo.so': 'odm/lib64/libdscaalgo.so',
     'odm/etc/camera/singleblur/license_release.license': 'system_ext/etc/camera/singleblur/license_release.license',
     'my_product/product_overlay/etc/permissions/oplus_camera_default_grant_permissions_list.xml': 'system_ext/etc/default-permissions/oplus_camera_default_grant_permissions_list.xml',
 }
