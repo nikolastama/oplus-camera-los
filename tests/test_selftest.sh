@@ -7,7 +7,8 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/mod" "$T/sdcard/DCIM/Camera" "$T/sdcard/Download" "$T/tmp" "$T/tomb" "$T/state"
 cp "$REPO/module/selftest.sh" "$REPO/module/module.prop" "$T/mod/"
-sed -i "s|/sdcard|$T/sdcard|g; s|/data/local/tmp|$T/tmp|g; s|/data/tombstones|$T/tomb|g" "$T/mod/selftest.sh"
+sed -i "s|/sdcard|$T/sdcard|g; s|/data/local/tmp|$T/tmp|g; s|/data/tombstones|$T/tomb|g; s|/proc/uptime|$T/uptime|g" "$T/mod/selftest.sh"
+echo "3600.00 7200.00" > "$T/uptime"   # past the self-test's start-up wait, whatever the host's uptime
 S=$T/state; C=$T/sdcard/DCIM/Camera
 cat > "$T/bin/am" <<EOF
 #!/bin/sh
@@ -29,7 +30,8 @@ EOF
 cat > "$T/bin/pidof" <<EOF
 #!/bin/sh
 case "\$1" in com.oplus.camera) touch $S/open; echo 4242;;
-  *provider*) if [ "\${HALRESTART:-0}" = 1 ] && [ -f $S/p ]; then echo 999; else touch $S/p; echo 777; fi;; esac
+  *provider*) if [ "\${HALRESTART:-0}" = 1 ] && [ -f $S/p ]; then echo 999; else touch $S/p; echo 777; fi;;
+  *) exit 1;; esac   # nothing else runs (no dex2oat compiling)
 EOF
 cat > "$T/bin/logcat" <<'EOF'
 #!/bin/sh

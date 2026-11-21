@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.38 (stable: v0.38-beta and beta2)
+Everything from the two betas below, unchanged since v0.38-beta2. Tested on a phone in every mode.
+- Build: `prebuilt/camera.oemlayer.wrap.so` is now byte-identical to what `tools/oemwrap/build.sh` produces with Ubuntu 24.04's clang/lld 18.1.3, so the CI byte check passes again (same code as beta2; only `.comment`, one symbol-table value and the build-id changed). Self-test test: its start-up wait no longer depends on the CI machine's uptime or a stray `pidof` match.
+
 ## v0.38-beta2 (frame-timestamp fix actually active)
 - Fix: the front camera froze after a photo with a face (v0.38-beta). With face detection on, a front face shot becomes a 7-frame burst built from frames taken just before the shutter, so its shutter timestamps go backwards (seen on the phone: frames 58–64, two of them re-stamped +9 ns by the layer); cameraserver dropped the last frames ("timestamp … is not increasing") and the app waited forever. The wrapper's frame-timestamp fix (v0.37) exists for exactly this, but it hooked `process_capture_request` in AOSP's device-op slot 4. Qualcomm's `camera3_device_ops` has one entry more before it, so requests arrive in slot 5 (`camx.device-impl.so` calls `ops+0x28`); the hook never ran, no request was ever recorded, and every shutter passed through as "unknown" (a diagnostic build on the phone showed `known=0`, `last_ts=0` for every frame). The hook now sits in slot 5. This also makes the fix work for the rear multi-frame shots it was written for. Host test: requests go through the ops table as the provider does, the slot is checked, and the burst captured on the phone is replayed.
 - Tested on a phone: front face shots save again, and every mode was run (photo at each zoom, portrait, night, master/pro, hi-res 50 MP, text, tilt-shift, long exposure, 1080p120 video without dropped frames, slo-mo, pro video, dual-view, time-lapse).
