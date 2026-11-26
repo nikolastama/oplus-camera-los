@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the KernelSU module zip from an OxygenOS firmware dump.
+"""Build the KernelSU module zip from a ColorOS firmware dump.
 
     python3 tools/build_module.py --dump <dump root> --out out/ \
         --apktool apktool.jar --signer uber-apk-signer.jar \
@@ -12,14 +12,14 @@ which leaves it in your shell history).
 are accepted: <root>/my_product/app/... and the dumper's <root>/my_product/my_product/app/....
 
 Every step verifies what it changes: smali patches assert their anchors (tools/patches.py),
-native byte patches check the original bytes and the final sha256 (tools/binpatches.json),
-and the APS client patch checks both hashes. A different firmware build therefore fails loudly
+app-blob fixups check their bytes (tools/app_blobs.py), and the APS client patch checks both
+hashes. A different firmware build therefore fails loudly
 at the first patch that no longer fits instead of producing a silently broken module.
 
 Every change can be left out for testing or reverting (see docs/REVERTING.md):
     --list-patches                     show every patch / edit id
-    --skip <name>                      skip a smali patch function, apsclient_force_java_heif,
-                                       or a native edit id from binpatches.json (repeatable)
+    --skip <name>                      skip a smali patch function, apsclient_force_java_heif
+                                       or app_blobs (repeatable)
     --enable-component <class>         keep one of the components camera_disable_oem_components
                                        would disable (repeatable)
 """
@@ -37,6 +37,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(HERE))
+import app_blobs as A  # noqa: E402
 import patches as P  # noqa: E402
 
 APP_PATCHES = [
@@ -45,7 +46,6 @@ APP_PATCHES = [
     P.camera_uifirst,
     P.strip_oem_component_permissions,
     P.vendor_tag_aliases,
-    P.camera_blur_license_path,
     P.camera_defer_ufs_probe,
     P.camera_gallery_fallback,
     P.camera_disable_oem_components,
@@ -56,8 +56,8 @@ APP_PATCHES = [
     P.camera_drop_embedded_libs,
 ]
 SDK_PATCHES = [P.sdk_runtime, P.sdk_facebeauty_path, P.sdk_session_package_tag, P.vendor_tag_aliases]
-ADAPTER_PATCHES = [P.vendor_tag_aliases]
-STUBS_PATCHES = [P.stubs_scoped_props]
+ADAPTER_PATCHES = [P.sdk_facebeauty_path, P.vendor_tag_aliases]
+STUBS_PATCHES = [P.stubs_scoped_props, P.stubs_framework_classes, P.stubs_surfaceext_jni]
 
 APK_SRC = 'my_product/app/OplusCamera/OplusCamera.apk'
 SDK_SRC = 'my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar'
@@ -65,10 +65,6 @@ ADAPTER_SRC = 'my_product/product_overlay/framework/com.oplus.camera.unit.sdk.ad
 # files copied as-is, beyond tools/selection.json (source -> module path)
 EXTRA_COPIES = {
     'odm/lib64/libOplusSecurity.so': 'odm/lib64/libOplusSecurity.so',
-    # SWDSCA stage of Qualcomm's offline front end; LineageOS doesn't ship it. Loaded from /odm by
-    # the install-time fix of libcamxofehwl (module/customize.sh, fix 3).
-    'vendor/lib64/libdscaalgo.so': 'odm/lib64/libdscaalgo.so',
-    'odm/etc/camera/singleblur/license_release.license': 'system_ext/etc/camera/singleblur/license_release.license',
     'my_product/product_overlay/etc/permissions/oplus_camera_default_grant_permissions_list.xml': 'system_ext/etc/default-permissions/oplus_camera_default_grant_permissions_list.xml',
 }
 # selection.json entries that are not shipped (the HAL-side interfaces exist on LineageOS)
@@ -86,113 +82,74 @@ def sha(p):
 
 
 def src(dump, rel):
-    for cand in (dump / rel, dump / rel.split('/')[0] / rel):
+    top = rel.split('/')[0]
+    # system-as-root dumps keep system's files one level deeper: <root>/system/system/system/lib64
+    for cand in (dump / rel, dump / top / rel, dump / top / top / rel):
         if cand.is_file():
             return cand
     raise FileNotFoundError(f'not in dump: {rel}')
 
 
-def run(*cmd):
-    print('  $', ' '.join(map(str, cmd))[:160])
-    subprocess.run(list(map(str, cmd)), check=True, stdout=subprocess.DEVNULL)
+def _link_or_copy(a, b):
+    """Hard link (no second 1.6 GB on disk), or copy where links aren't possible."""
+    try:
+        os.link(a, b)
+    except OSError:
+        shutil.copyfile(a, b)
 
 
-def edit_context(data, off, length, min_side=8, max_side=128):
-    """Shortest window of <data> around the edit at <off> that occurs exactly once in <data>:
-    (hex, position of the edit inside it). Stored with each edit in binpatches.json, so the edit is
-    found again in a newer build where it has moved (tools/build_module.py --refresh-binpatch-context)."""
-    for side in range(min_side, max_side + 1, 8):
-        a, b = max(0, off - side), min(len(data), off + length + side)
-        w = bytes(data[a:b])
-        first = data.find(w)
-        if first == a and data.find(w, first + 1) < 0:
-            return w.hex(), off - a
-    return None
+SECRET_FLAGS = ('--ksPass', '--ksKeyPass')
 
 
-def locate_edit(d, e):
-    """Offset of edit <e> in <d>: its recorded offset if the original bytes are there, else the one
-    place its context window (or, for long edits, the original bytes themselves) occurs."""
-    o, off = bytes.fromhex(e['orig']), e['offset']
-    if bytes(d[off : off + len(o)]) == o:
-        return off
-    if 'find' in e:
-        w = bytes.fromhex(e['find'])
-        i = d.find(w)
-        if i >= 0 and d.find(w, i + 1) < 0 and bytes(d[i + e['at'] : i + e['at'] + len(o)]) == o:
-            return i + e['at']
-    if len(o) >= 12:
-        i = d.find(o)
-        if i >= 0 and d.find(o, i + 1) < 0:
-            return i
-    return None
+def shown(cmd):
+    """The command as printed: the value after a password flag is masked."""
+    out = [str(a).replace('\n', '\\n') for a in cmd]
+    for i, a in enumerate(out[:-1]):
+        if a in SECRET_FLAGS:
+            out[i + 1] = '***'
+    return ' '.join(out)
 
 
-def binpatch(path, spec, skip=()):
-    d = bytearray(path.read_bytes())
-    if hashlib.sha256(d).hexdigest() != spec['src_sha256']:
-        print(f'  ! {spec["src"]}: not the expected build, locating edits by their bytes')
-    # locate every edit in the untouched file first: neighbouring edits share context bytes
-    todo, skipped = [], False
-    for e in spec['edits']:
-        if e['id'] in skip:
-            print(f'  SKIPPED {e["id"]}')
-            skipped = True
-            continue
-        off = locate_edit(d, e)
-        if off is None:
-            raise SystemExit(
-                f'{spec["dst"]}: edit {e["id"]} at {e["offset"]:#x} ({e["why"]}) does not fit this build; '
-                'see docs/MAINTAINING.md'
-            )
-        if off != e['offset']:
-            print(f'  {e["id"]}: found at {off:#x} (recorded {e["offset"]:#x})')
-        todo.append((off, bytes.fromhex(e['new'])))
-    for off, n in todo:
-        d[off : off + len(n)] = n
-    path.write_bytes(bytes(d))
-    if not skipped and hashlib.sha256(d).hexdigest() != spec['dst_sha256']:
-        print(f'  ! {spec["dst"]}: result differs from the tested build (expected for new firmware)')
+# apktool writes smali/XML with the JVM's line separator: LF everywhere, so the patches' anchors and
+# the recorded diffs match on Windows too
+JAVA = ('java', '-Dline.separator=\n')
+
+
+def run(*cmd, env=None):
+    print('  $', shown(cmd)[:160])
+    subprocess.run(
+        list(map(str, cmd)), check=True, stdout=subprocess.DEVNULL, env={**os.environ, **env} if env else None
+    )
+
+
+STORED_SUFFIXES = ('.img', '.apk', '.jar')
 
 
 def write_zip(root, path):
     """Zip <root>'s files in a fixed order with fixed timestamps, so the same inputs always give
-    the same zip (KernelSU sets the permissions itself, so none are stored)."""
+    the same zip (KernelSU sets the permissions itself, so none are stored). Files that are already
+    compressed (STORED_SUFFIXES: the erofs image, the APK, the jars) are stored as they are, so the
+    installer only copies them instead of inflating them."""
     with zipfile.ZipFile(path, 'w') as zf:
         for p in sorted(p for p in root.rglob('*') if p.is_file()):
             info = zipfile.ZipInfo(p.relative_to(root).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16
-            zf.writestr(info, p.read_bytes(), zipfile.ZIP_DEFLATED, compresslevel=9)
+            if p.suffix in STORED_SUFFIXES:
+                info.compress_type = zipfile.ZIP_STORED
+            else:
+                info.compress_type, info.compress_level = zipfile.ZIP_DEFLATED, 9
+            with p.open('rb') as src, zf.open(info, 'w') as dst:
+                shutil.copyfileobj(src, dst, 2**24)
 
 
 def apktool_patch(args, src_file, workdir, fns, out_file):
-    run('java', '-jar', args.apktool, 'd', '-f', '-o', workdir, src_file)
+    run(*JAVA, '-jar', args.apktool, 'd', '-f', '-o', workdir, src_file)
     for f in fns:
         if f.__name__ in args.skip:
             print(f'  SKIPPED {f.__name__}')
             continue
         print(f'  patch {f.__name__}: {f(workdir)}')
-    run('java', '-jar', args.apktool, 'b', workdir, '-o', out_file)
-
-
-def refresh_binpatch_context(dump):
-    """Store, for each edit in binpatches.json, the shortest unique window of the stock file around
-    it (edit_context). Only for the firmware whose sha256 the file records."""
-    path = HERE / 'binpatches.json'
-    specs = json.loads(path.read_text())
-    for spec in specs:
-        d = src(dump, spec['src']).read_bytes()
-        if hashlib.sha256(d).hexdigest() != spec['src_sha256']:
-            raise SystemExit(f'{spec["src"]}: not the firmware binpatches.json was made for')
-        for e in spec['edits']:
-            if d[e['offset'] : e['offset'] + len(bytes.fromhex(e['orig']))] != bytes.fromhex(e['orig']):
-                raise SystemExit(f'{e["id"]}: original bytes not at the recorded offset')
-            ctx = edit_context(d, e['offset'], len(bytes.fromhex(e['orig'])))
-            if ctx is None:
-                raise SystemExit(f'{e["id"]}: no unique window within 128 bytes')
-            e['find'], e['at'] = ctx
-            print(f'  {e["id"]}: {len(ctx[0]) // 2}-byte window')
-    path.write_text(json.dumps(specs, indent=1) + '\n')
+    run(*JAVA, '-jar', args.apktool, 'b', workdir, '-o', out_file)
 
 
 def main():
@@ -206,25 +163,21 @@ def main():
     ap.add_argument('--signer', help='uber-apk-signer jar')
     ap.add_argument('--keystore')
     ap.add_argument('--ks-alias', default='opluscam')
-    ap.add_argument('--ks-pass', default=os.environ.get('OPLUS_CAMERA_KS_PASS'), help=argparse.SUPPRESS)
+    ap.add_argument('--mkfs-erofs', default=shutil.which('mkfs.erofs'), help='mkfs.erofs (erofs-utils 1.7+)')
     ap.add_argument(
-        '--refresh-binpatch-context',
+        '--no-dedupe',
         action='store_true',
-        help='with --dump of the firmware binpatches.json was made for: store each edit\'s context window',
+        help='make blobs.img on all cores without dedupe (test builds: faster, ~0.2 GB larger)',
     )
+    ap.add_argument('--ks-pass', default=os.environ.get('OPLUS_CAMERA_KS_PASS'), help=argparse.SUPPRESS)
     args = ap.parse_args()
-    if args.refresh_binpatch_context:
-        if not args.dump:
-            ap.error('--dump is required')
-        refresh_binpatch_context(args.dump.resolve())
-        return
-    edits = [e['id'] for s in json.loads((HERE / 'binpatches.json').read_text()) for e in s['edits']]
     if args.list_patches:
         print('app:     ', ' '.join(f.__name__ for f in APP_PATCHES))
         print('sdk:     ', ' '.join(f.__name__ for f in SDK_PATCHES))
         print('adapter: ', ' '.join(f.__name__ for f in ADAPTER_PATCHES))
         print('stubs:   ', ' '.join(f.__name__ for f in STUBS_PATCHES))
-        print('native:   apsclient_force_java_heif', ' '.join(edits))
+        print('native:   apsclient_force_java_heif')
+        print(f'app_blobs: {len(A.paths())} files from tools/app_blobs.txt; fixups:', ' '.join(A.fixups()))
         print('components disabled:', ' '.join(P.OEM_ONLY_COMPONENTS))
         return
     for need in ('dump', 'apktool', 'signer', 'keystore'):
@@ -232,15 +185,16 @@ def main():
             ap.error(f'--{need.replace("_", "-")} is required')
     if not args.ks_pass:
         ap.error('set the keystore password in OPLUS_CAMERA_KS_PASS')
-    known = (
-        {f.__name__ for f in APP_PATCHES + SDK_PATCHES + ADAPTER_PATCHES + STUBS_PATCHES}
-        | {'apsclient_force_java_heif'}
-        | set(edits)
-    )
+    known = {f.__name__ for f in APP_PATCHES + SDK_PATCHES + ADAPTER_PATCHES + STUBS_PATCHES} | {
+        'apsclient_force_java_heif',
+        'app_blobs',
+    }
     bad = [s for s in args.skip if s not in known]
     if bad:
         ap.error(f'unknown --skip {bad}; see --list-patches')
     args.skip = set(args.skip)
+    if 'app_blobs' not in args.skip and not args.mkfs_erofs:
+        ap.error('mkfs.erofs not found: put it on PATH or pass --mkfs-erofs (or --skip app_blobs)')
     for c in args.enable_component:
         if c not in P.OEM_ONLY_COMPONENTS:
             ap.error(f'{c} is not in OEM_ONLY_COMPONENTS')
@@ -264,17 +218,63 @@ def main():
     for s, d in EXTRA_COPIES.items():
         (S / d).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src(dump, s), S / d)
+    # the camera app's own libraries and data, which LineageOS no longer ships (tools/app_blobs.py)
+    if 'app_blobs' in args.skip:
+        print('  SKIPPED app_blobs')
+    else:
+        missing = [r for r in A.paths() if not (dump / r).is_file() and not (dump / 'odm' / r).is_file()]
+        if missing:
+            raise SystemExit(
+                f'{len(missing)} camera app files not in the dump, e.g. {missing[:3]}; see tools/app_blobs.txt'
+            )
+        # kept out of system/: the metamodule copies only partition folders into its image, which
+        # these don't fit in. They go into their own read-only erofs image with the odm image's
+        # labels, which post-mount.sh mounts (tools/app_blobs.py, IMAGE and MOUNTS).
+        A.check_mounts(A.paths())
+        (mod / '.app_blobs').write_text(''.join(r + '\n' for r in A.paths()), newline='\n')
+        # the image takes minutes to make: reuse the last one while its inputs are unchanged
+        cache, key_file = out / 'cache', out / 'cache/blobs.key'
+        key = A.image_key(
+            [(r, src(dump, r)) for r in A.paths()] + [(A.CONTEXTS, src(dump, A.CONTEXTS))],
+            Path(args.mkfs_erofs),
+            dedupe=not args.no_dedupe,
+        )
+        if (cache / A.IMAGE).is_file() and key_file.is_file() and key_file.read_text() == key:
+            _link_or_copy(cache / A.IMAGE, mod / A.IMAGE)
+            print(
+                f'  {A.IMAGE}: inputs unchanged, reused out/cache/{A.IMAGE} (delete out/cache to remake it)'
+            )
+        else:
+            blobs = work / 'blobs'
+            for r in A.paths():
+                (blobs / r).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src(dump, r), blobs / r)
+            for r in A.fixups():
+                print(f'  {r}: {", ".join(A.fix(r, blobs / r))}')
+            contexts = A.read_contexts(src(dump, A.CONTEXTS).read_text(encoding='utf-8'))
+            (work / 'blobs.file_contexts').write_text(
+                A.image_file_contexts(A.labels(contexts, A.paths())), newline='\n'
+            )
+            (work / 'blobs.fs_config').write_text(A.image_fs_config(A.paths()), newline='\n')
+            run(
+                *A.mkfs_command(args.mkfs_erofs, work, blobs, mod / A.IMAGE, dedupe=not args.no_dedupe),
+                env={'TMPDIR': work.as_posix()},
+            )
+            size = sum(f.stat().st_size for f in blobs.rglob('*') if f.is_file())
+            print(
+                f'  {len(A.paths())} camera app files, {size // 2**20} MB in {A.IMAGE} of '
+                f'{(mod / A.IMAGE).stat().st_size // 2**20} MB (outside the metamodule image)'
+            )
+            shutil.rmtree(cache, ignore_errors=True)
+            cache.mkdir()
+            _link_or_copy(mod / A.IMAGE, cache / A.IMAGE)
+            key_file.write_text(key)
     if 'apsclient_force_java_heif' in args.skip:
         print('  SKIPPED apsclient_force_java_heif')
     else:
         print(f'  APS client: {P.apsclient_force_java_heif(S / "system_ext/lib64/libAPSClient-cmd-jni.so")}')
 
-    print('[2/6] OnePlus camera layer (odm)')
-    for spec in json.loads((HERE / 'binpatches.json').read_text()):
-        dst = S / spec['dst']
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src(dump, spec['src']), dst)
-        binpatch(dst, spec, args.skip)
+    print('[2/6] OnePlus camera layer wrapper (the installer adds copies of LineageOS\'s layer)')
     (S / 'odm/lib64/hw').mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPO / 'prebuilt/camera.oemlayer.wrap.so', S / 'odm/lib64/hw/camera.oemlayer.v2.so')
 
@@ -329,11 +329,15 @@ def main():
 
     print('[5/6] verify')
     files = sorted(p for p in S.rglob('*') if p.is_file())
-    if any('/system/vendor/' in str(p) for p in files):
+    if any('/system/vendor/' in p.as_posix() for p in files):
         raise SystemExit('module must not ship /vendor files')
     for sh in mod.glob('*.sh'):
         run('sh', '-n', sh)
-    (out / 'MANIFEST.sha256').write_text(''.join(f'{sha(p)}  {p.relative_to(mod)}\n' for p in files))
+    every = sorted(p for p in mod.rglob('*') if p.is_file())  # the zip's contents, scripts included
+    (out / 'MANIFEST.sha256').write_text(
+        ''.join(f'{sha(p)}  {p.relative_to(mod).as_posix()}\n' for p in every),
+        newline='\n',
+    )
 
     print('[6/6] zip')
     ver = next(
@@ -343,7 +347,7 @@ def main():
     )
     z = out / f'oplus-camera-los-{ver}.zip'
     write_zip(mod, z)
-    print(f'done: {z} ({len(files)} files)')
+    print(f'done: {z} ({len(every)} files)')
 
 
 if __name__ == '__main__':

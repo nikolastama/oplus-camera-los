@@ -19,154 +19,144 @@ ui_print "  device: ${DEVICE:-?} ($PRODDEV)  LineageOS: ${LOSVER:-none}  SDK: $A
 [ "$DEVICE" = infiniti ] || [ "$PRODDEV" = OP611FL1 ] || abort "! This module is only for the OnePlus 15 (infiniti)."
 case "$LOSVER" in 24.*) ;; *) abort "! This module is built for LineageOS 24 only (found '${LOSVER:-none}')." ;; esac
 [ "$ARCH" = arm64 ] || abort "! arm64 only"
-[ -e /odm/lib64/libAlgoProcess.so ] && [ -e /vendor/lib64/hw/camera.qcom.core.so ] \
-  || abort "! OnePlus camera HAL libraries not found on this ROM"
+[ -e /vendor/lib64/hw/camera.qcom.core.so ] || abort "! Qualcomm camera HAL not found on this ROM"
 
-# OnePlus camera layer (camera.oemlayer.v2): LineageOS already points the camera HAL at it
-# (ro.hardware.camera=oemlayer.v2) but doesn't ship it. If the HAL finds it but cannot load it,
-# every camera app breaks, so only ship it when all of its libraries exist on this ROM.
-# All of the module's HAL-side files live on /odm (searched before /vendor by both libhardware
-# and the vendor linker), so nothing under /vendor is ever overlaid.
+# OnePlus camera layer (camera.oemlayer.v2; ro.hardware.camera=oemlayer.v2). The module's camera app
+# and its libraries come from ColorOS 11.C.80, the build LineageOS's ColorOS-blob builds take their
+# camera HAL and layer from, so the module needs a build that ships the layer itself. The module's
+# wrapper takes /odm/lib64/hw/camera.oemlayer.v2.so and loads a private copy of LineageOS's layer
+# from /odm/lib64 (made below, after the fix helpers). All of the module's HAL-side files live on
+# /odm (searched before /vendor by both libhardware and the vendor linker), so nothing under
+# /vendor is ever overlaid.
+[ -f /odm/lib64/hw/camera.oemlayer.v2.so ] || abort "! This version needs a LineageOS build with ColorOS camera blobs (it ships /odm/lib64/hw/camera.oemlayer.v2.so). Update LineageOS first."
 OEMLAYER="$MODPATH/system/odm/lib64/hw/camera.oemlayer.v2.so"
-drop_layer() {
-  rm -f "$OEMLAYER" "$MODPATH/system/odm/lib64/camera.oemlayer.v2.so" "$MODPATH/system/odm/lib64/libsensorbridg2.so" \
-        "$MODPATH/system/odm/lib64/camera.oemlayer.uilaye2.so"
-  rmdir "$MODPATH/system/odm/lib64/hw" 2>/dev/null
-}
-# A layer file counts as the ROM's own only if no module (this one's older versions included)
-# provides it: a stale overlay from an older version once made the old copy look like a ROM file.
-rom_has() {
-  [ -e "$1" ] || return 1
-  rel=${1#/vendor/}
-  for root in $MODULES $METAMODULE_MNTS; do
-    for m in "$root"/*/; do
-      { [ -e "${m}system/vendor/$rel" ] || [ -e "${m}vendor/$rel" ]; } && return 1
-    done
-  done
-  return 0
-}
-if [ -f "$OEMLAYER" ] && { rom_has /vendor/lib64/hw/camera.oemlayer.v2.so || rom_has /vendor/lib64/camera.oemlayer.v2.so; }; then
+drop_layer() { drop_files "$MODPATH" $LAYER_FILES; }
+if [ -f "$OEMLAYER" ] && [ "$(getprop ro.hardware.camera)" != oemlayer.v2 ] \
+   && ! grep -qs '^ro.hardware.camera=oemlayer.v2' /vendor/build.prop /odm/etc/build.prop /vendor/etc/build.prop; then
   drop_layer
-  ui_print "- This ROM ships the OnePlus camera layer itself; using the ROM's copy"
-fi
-if [ -f "$OEMLAYER" ]; then
-  MISSING=""
-  for l in android.frameworks.sensorservice-V1-ndk.so android.frameworks.sensorservice@1.0.so android.hardware.graphics.common@1.0.so android.hardware.graphics.common@1.1.so android.hardware.graphics.common@1.2.so android.hardware.sensors-V3-ndk.so camera.oemlayer.healthmonitor.so camera.oemlayer.logger.so camera.oemlayer.uilayer.so camera.oemlayer.adapter.so libhwconfigurationutil.so libmidasserviceintf_aidl.so libocompression.so libopluscameraframeboost.so liboplusdfx.so libosenseaidlhalclient.so libosensenativeproxy_client.so liboutils.so vendor.oplus.hardware.camera.aon-service-impl.so vendor.oplus.hardware.camera_rfi-V1-service-impl.so vendor.oplus.hardware.cammidasservice-V1-ndk.so vendor.oplus.hardware.charger-V9-ndk.so vendor.oplus.hardware.commondcs-V1-ndk.so vendor.oplus.hardware.osense.client-V1-ndk.so vendor.oplus.hardware.sendextcamcmd-V1-service-impl.so; do
-    found=0
-    for d in /vendor/lib64 /odm/lib64 /vendor/lib64/hw /odm/lib64/hw /system/lib64 /apex/*/lib64; do
-      [ -e "$d/$l" ] && { found=1; break; }
-    done
-    [ $found = 1 ] || MISSING="$MISSING $l"
-  done
-  if [ "$(getprop ro.hardware.camera)" != oemlayer.v2 ] && ! grep -qs '^ro.hardware.camera=oemlayer.v2' /vendor/build.prop /odm/etc/build.prop /vendor/etc/build.prop; then
-    MISSING="$MISSING (ro.hardware.camera is not oemlayer.v2)"
-  fi
-  if [ -n "$MISSING" ]; then
-    drop_layer
-    ui_print "! OnePlus camera layer NOT installed, missing:$MISSING"
-    ui_print "! The camera app will not identify its lenses without it."
-  else
-    ui_print "- OnePlus camera layer: all dependencies present"
-  fi
+  ui_print "! OnePlus camera layer NOT installed: ro.hardware.camera is not oemlayer.v2"
 fi
 
-# ---- Fixes for two OnePlus libraries that assume OxygenOS's graphics stack ----
+# ---- Fixes for OnePlus libraries that assume ColorOS's graphics stack ----
 # Each fix makes a copy of the ROM's own file inside the module with a few instruction bytes
 # changed. The ROM file itself is never modified; removing the module removes the copy.
 # Nothing is applied unless the exact expected bytes are found exactly once, and the result is
-# checked byte-for-byte afterwards. (On a module update /vendor and /odm already show the
-# previously fixed copy, which is recognised and copied as is.)
+# checked byte-for-byte afterwards. The fix is always made from the ROM's own file, never from the
+# previous module version's copy, so a module install after a LineageOS update picks up the new
+# ROM files. After a LineageOS update, post-fs-data.sh remakes a copy whose ROM file changed
+# (refresh_fixes, common.sh), so the module doesn't have to be installed again.
 FIXED="$MODPATH/.fixed"; rm -f "$FIXED"
-hexat() { od -An -v -tx1 -j "$2" -N "$3" "$1" 2>/dev/null | tr -d ' \n'; }
-fixlib() {  # <ROM file> <module copy> <expected offset> <original hex> <fixed hex> <label>
-  src=$1; dst=$2; off=$3; orig=$4; new=$5; label=$6; n=$((${#orig} / 2))
-  rm -f "$dst"
-  [ -f "$src" ] || { ui_print "! $label: $src not found, fix not applied"; return 1; }
-  cur=$(hexat "$src" "$off" "$n")
-  if [ "$cur" != "$orig" ] && [ "$cur" != "$new" ]; then
-    off=$(od -An -v -tx1 "$src" | awk -v a="$orig" -v b="$new" -v n="$n" '{for(i=1;i<=NF;i++){q[c%n]=$i;c++;if(c>=n){s="";for(k=0;k<n;k++)s=s q[(c+k)%n];if(s==a||s==b)print c-n}}}')
-    if [ -z "$off" ] || [ "$(echo "$off" | wc -l)" != 1 ]; then
-      ui_print "! $label: expected code not found, fix not applied"; return 1
-    fi
-    cur=$(hexat "$src" "$off" "$n")
-  fi
-  mkdir -p "${dst%/*}"; cp -p "$src" "$dst" || { rm -f "$dst"; return 1; }
-  i=0; want=0
-  while [ $i -lt $n ]; do
-    ob=$(echo "$orig" | cut -c$((i * 2 + 1))-$((i * 2 + 2))); nb=$(echo "$new" | cut -c$((i * 2 + 1))-$((i * 2 + 2)))
-    if [ "$ob" != "$nb" ] && [ "$cur" != "$new" ]; then
-      want=$((want + 1))
-      if [ "$nb" = 00 ]; then head -c 1 /dev/zero; else printf "\\$(printf %o 0x$nb)"; fi \
-        | dd of="$dst" bs=1 seek=$((off + i)) conv=notrunc 2>/dev/null
-    fi
-    i=$((i + 1))
+odm_fp > "$MODPATH/.rom_fp"
+# The module's own /odm files hide the ROM's on a module update (and until the reboot after a
+# watchdog or update removed them). Their ROM originals are read from a second, read-only mount of
+# the odm partition, which has no module overlay.
+ODM_RO=/data/local/tmp/ocam-odm-ro; ODM_RO_STATE=
+# rom_src runs in $(...) subshells, so ODM_RO_STATE set there doesn't reach the installer itself:
+# whether the second mount is up is read from /proc/mounts, never from the variable alone.
+odm_ro_mounted() { awk -v m="$ODM_RO" '$2 == m { f = 1 } END { exit !f }' /proc/mounts; }
+mount_odm_ro() {
+  odm_ro_mounted && { ODM_RO_STATE=ok; return 0; }
+  [ -n "$ODM_RO_STATE" ] && { [ "$ODM_RO_STATE" = ok ]; return; }
+  ODM_RO_STATE=failed; slot=$(getprop ro.boot.slot_suffix)
+  mkdir -p "$ODM_RO"
+  # the device /odm is mounted from first (a dm-verity device holds the plain one), then the usual names
+  for dev in $(awk '$2 == "/odm" && $3 != "overlay" { print $1 }' /proc/mounts) \
+             /dev/block/mapper/odm$slot /dev/block/by-name/odm$slot /dev/block/mapper/odm /dev/block/by-name/odm; do
+    [ -b "$dev" ] || continue
+    for t in erofs ext4; do
+      mount -t $t -o ro "$dev" "$ODM_RO" 2>/dev/null && { ODM_RO_STATE=ok; return 0; }
+    done
   done
-  if [ "$(hexat "$dst" "$off" "$n")" = "$new" ] && [ "$(stat -c %s "$dst")" = "$(stat -c %s "$src")" ] \
-     && [ "$(cmp -l "$src" "$dst" 2>/dev/null | wc -l)" = "$want" ]; then
-    echo "${dst#$MODPATH/system/} $(ls -Z "$src" | awk '{print $1}')" >> "$FIXED"
-    ui_print "- $label: fix applied"
-  else
-    rm -f "$dst"; ui_print "! $label: verification failed, fix not applied"; return 1
+  rmdir "$ODM_RO" 2>/dev/null; return 1
+}
+umount_odm_ro() {
+  while odm_ro_mounted; do umount "$ODM_RO" 2>/dev/null || break; done
+  rmdir "$ODM_RO" 2>/dev/null; ODM_RO_STATE=
+}
+rom_src() {  # <ROM path> -> a file holding the ROM's own bytes, or nothing
+  case "$1" in /odm/*) ;; *) echo "$1"; return ;; esac   # /vendor is never overlaid by the module
+  rel=${1#/odm/}; shadowed=0
+  for c in "$INSTALLED/system/odm" $(for r in $METAMODULE_MNTS; do echo "$r/$MODID/odm $r/$MODID/system/odm"; done); do
+    [ -e "$c/$rel" ] && { shadowed=1; break; }
+  done
+  [ $shadowed = 0 ] && { echo "$1"; return; }
+  if mount_odm_ro && [ -f "$ODM_RO/$rel" ]; then echo "$ODM_RO/$rel"; return; fi
+  # no second mount: the installed version's fixed copy of this ROM file (its own path, or another
+  # one as for the layer) is still right while the ODM build hasn't changed. patch_copy accepts
+  # bytes that are already fixed. (An update from v0.38 or older has no record of the ODM build.)
+  { [ ! -e "$INSTALLED/.rom_fp" ] || [ "$(cat "$INSTALLED/.rom_fp")" = "$(odm_fp)" ]; } || return 0
+  c=$(awk -v r="$1" '$3 == r { print $1; exit }' "$INSTALLED/.fixed" 2>/dev/null)
+  [ -z "$c" ] && [ ! -e "$INSTALLED/.rom_fp" ] && c=odm/$rel
+  [ -n "$c" ] && [ -f "$INSTALLED/system/$c" ] && echo "$INSTALLED/system/$c"
+}
+fixlib() {  # <ROM file> <module copy> <expected offset> <original hex> <fixed hex> <label>
+  rom=$1; dst=$2; label=$6
+  rm -f "$dst"
+  [ -f "$rom" ] || { ui_print "! $label: $rom not found, fix not applied"; return 1; }
+  src=$(rom_src "$rom")
+  [ -n "$src" ] || { ui_print "! $label: the ROM's own $rom is hidden by the module; reboot, then install again"; return 1; }
+  # patch_copy (common.sh) finds, applies and verifies the edit; post-fs-data.sh repeats it with the
+  # same values after a LineageOS update changes the ROM file (refresh_fixes)
+  if ! off=$(patch_copy "$src" "$dst" "$3" "$4" "$5"); then
+    ui_print "! $label: expected code not found, fix not applied"; return 1
   fi
+  echo "${dst#$MODPATH/system/} $(ls -Z "$src" | awk '{print $1}') $rom $(sha256sum "$src" | cut -d' ' -f1) $off $4 $5" >> "$FIXED"
+  ui_print "- $label: fix applied"
 }
 
 # 1) Offline camera service (vendor). It reads the capture-metadata buffer size from offset
-#    0x1c of the graphics buffer handle. OxygenOS's gralloc keeps the buffer width there,
+#    0x1c of the graphics buffer handle. ColorOS's gralloc keeps the buffer width there,
 #    LineageOS's open-source snapalloc keeps the handle flags there (512), so only 512 bytes of
 #    metadata were copied and photos came out black. Read the width from 0x2c instead.
-#    ldr x24,[x20,#0x30]; mov x2,xzr; ldr w27,[x24,#0x1c -> 0x2c]; ldr w0,[x24,#0xc]
+#    ColorOS 11.C.80 (LineageOS since its ColorOS-blob builds): after HandleImporter::importBuffer,
+#      ldur x8,[x29,#-0xa8]; ldr w21,[x8,#0x1c -> 0x2c]; cmp w21,#0   (then ldr w0,[x8,#0xc]; MemMap)
+#    (+0x2c is SnapAlloc's unaligned width, which is the byte size for these BLOB buffers.)
 #    The fixed copy goes to /odm/lib64, which the camera HAL searches before /vendor/lib64 when it
 #    loads this library by name, so the ROM's /vendor copy is shadowed, not overlaid.
 OFFSRC=/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so
-[ -f "$INSTALLED/system/odm/lib64/${OFFSRC##*/}" ] && OFFSRC="$INSTALLED/system/odm/lib64/${OFFSRC##*/}"
 fixlib "$OFFSRC" \
-  "$MODPATH/system/odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so" 111500 \
-  981a40f9e2031faa1b1f40b9000f40b9 981a40f9e2031faa1b2f40b9000f40b9 "Offline camera service"
+  "$MODPATH/system/odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so" 102472 \
+  a88355f8151d40b9bf020071 a88355f8152d40b9bf020071 "Offline camera service"
 
-# 2) Camera processing library (odm). For Qualcomm's 10-bit format (YCbCr_420_P010_VENUS) it
-#    takes the chroma plane from AHardwareBuffer_lockPlanes(). OxygenOS's framework returns all
-#    three planes for that format; stock Android (LineageOS) returns only the luma plane, so
-#    the chroma pointer was garbage and HDR / 10-bit processing crashed (blurry fallback shots).
-#    Compute the chroma plane like the allocator lays it out: luma rows padded to 32, chroma
-#    stride = luma stride.
-fixlib /odm/lib64/libAlgoProcess.so "$MODPATH/system/odm/lib64/libAlgoProcess.so" 1875764 \
-  e86f40f9e97740f98b008052eae740b9ecf740b9ed0741b9290108cb880e00f9290dca9a8b320a29 \
-  e86f40f9e93341b98b008052eae740b9ec030a2aed030a2a297d0011880e00f929691b128b320a29 "Camera processing library"
+# 2) Camera processing library (libAlgoProcess): the module ships its own copy with this fix applied
+#    at build time (tools/app_blobs.py), since LineageOS no longer ships the library.
 
-# 3) Qualcomm's offline front end (vendor, libcamxofehwl) builds two helper-library paths from one
-#    "/vendor/lib64" string: libcamxtintlessalgo and libdscaalgo (the SWDSCA stage of the OFE's
-#    multi-pass HDR tone mapping). LineageOS doesn't ship libdscaalgo, so the OFE logged "Failed to
-#    open DSCA library" and ran without it. The module ships OxygenOS's libdscaalgo on /odm/lib64;
-#    this fix points that one prefix at "/odm/lib64" (NUL-padded, same length), and ofe_helpers puts
-#    a copy of the ROM's own tintless library next to it, so both loads find their library. The
-#    fixed copy shadows the ROM's by search order (camera.qcom loads it by name), like 1).
-fixlib /vendor/lib64/libcamxofehwl.so "$MODPATH/system/odm/lib64/libcamxofehwl.so" 202327 \
-  2573257325732e2573002f76656e646f722f6c6962363400 2573257325732e2573002f6f646d2f6c6962363400000000 "OFE helper libraries (DSCA)"
-ofe_helpers() {  # all three files or none: a fixed loader without its helpers would lose tintless
-  ofe="$MODPATH/system/odm/lib64/libcamxofehwl.so"; tl="$MODPATH/system/odm/lib64/libcamxtintlessalgo.so"
-  dsca="$MODPATH/system/odm/lib64/libdscaalgo.so"; rm -f "$tl"
-  if [ -f "$ofe" ] && [ -f "$dsca" ] && cp -p /vendor/lib64/libcamxtintlessalgo.so "$tl" 2>/dev/null \
-     && cmp -s /vendor/lib64/libcamxtintlessalgo.so "$tl"; then
-    echo "${tl#$MODPATH/system/} $(ls -Z /vendor/lib64/libcamxtintlessalgo.so | awk '{print $1}')" >> "$FIXED"
-    return 0
-  fi
-  [ -f "$ofe" ] && ui_print "! OFE helper libraries (DSCA): helper libraries missing, fix removed"
-  rm -f "$ofe" "$tl" "$dsca"
-  [ -f "$FIXED" ] && { grep -v '^odm/lib64/libcamxofehwl\.so ' "$FIXED" > "$FIXED.tmp"; mv -f "$FIXED.tmp" "$FIXED"; }
-  return 1
-}
-ofe_helpers
+# (Qualcomm's DSCA library for the offline front end: LineageOS's ColorOS-blob builds ship
+#  /vendor/lib64/libdscaalgo.so, so the OFE loader fix of earlier versions is no longer needed.)
 
-# 4) OnePlus's camera HW config (odm). LineageOS's extract-files rewrites it to "disable face
+# 3) OnePlus's camera HW config (odm). LineageOS's extract-files rewrites it to "disable face
 #    detection AE behaviour": [FDManager] fdSupport TRUE -> FALSE (and enableSWfdForThirdCamUnit,
 #    which is left as LineageOS has it). With fdSupport off, OnePlus's FD manager never runs, so the
 #    OnePlus camera loses face-priority exposure/focus/white balance and face data for portrait and
-#    multi-subject modes (log: "AdjustFaceRectangle failed"). Put OxygenOS's value back. Same length:
+#    multi-subject modes (log: "AdjustFaceRectangle failed"). Put ColorOS's value back. Same length:
 #    "TRUE;" plus a newline in place of "FALSE;" (an empty line is harmless in this file), so the
-#    fixed bytes also match OxygenOS's own file. The file is read by every camera client, so other
-#    apps get OxygenOS's FD behaviour too; to keep LineageOS's, comment this call out.
+#    fixed bytes also match ColorOS's own file. The file is read by every camera client, so other
+#    apps get ColorOS's FD behaviour too; to keep LineageOS's, comment this call out.
 fixlib /odm/etc/camera/CameraHWConfiguration.config "$MODPATH/system/odm/etc/camera/CameraHWConfiguration.config" 224011 \
   6664537570706f727420202020202020202020202020202020203d2046414c53453b 6664537570706f727420202020202020202020202020202020203d20545255453b0a "Camera face detection (FDManager)"
+
+# 4) libEIS (ColorOS build): native-handle format reads for SnapAlloc (common.sh, EIS_FIX_*).
+if [ -f /odm/lib64/libEIS.so ]; then
+  fixlib /odm/lib64/libEIS.so "$MODPATH/system/odm/lib64/libEIS.so" - "$EIS_FIX_ORIG" "$EIS_FIX_NEW" "libEIS SnapAlloc format"
+fi
+
+# 5) OnePlus camera layer: wrap LineageOS's own (see the top). rom_src reads the ROM's file even
+#    when an installed version's wrapper hides it.
+ROM_LAYER=0
+if [ -f "$OEMLAYER" ] && is_rom_layer "$(rom_src /odm/lib64/hw/camera.oemlayer.v2.so)"; then
+  ROM_LAYER=1
+  if fixlib /odm/lib64/hw/camera.oemlayer.v2.so "$MODPATH/system/odm/lib64/camera.oemlayer.v2.so" - "$LAYER_FIX_ORIG" "$LAYER_FIX_NEW" "OnePlus camera layer (LineageOS's)" \
+     && fixlib /odm/lib64/camera.oemlayer.uilayer.so "$MODPATH/system/odm/lib64/camera.oemlayer.uilaye2.so" - "$UILAYER_FIX_ORIG" "$UILAYER_FIX_NEW" "OnePlus camera layer UI library"; then
+    ui_print "- OnePlus camera layer: LineageOS's own, wrapped"
+  else
+    drop_layer
+    ui_print "! LineageOS's camera layer is used as is (OnePlus session fixes off)"
+  fi
+elif [ -f "$OEMLAYER" ]; then
+  drop_layer
+  ui_print "! LineageOS's camera layer could not be read: it is used as is (OnePlus session fixes off)"
+fi
+umount_odm_ro
 
 # Refuse if another copy of the OnePlus camera is already installed (ROM or other module)
 if pm path $PKG >/dev/null 2>&1 && [ ! -d $INSTALLED ]; then
@@ -176,6 +166,8 @@ fi
 # Never shadow a file the ROM ships: every file in this module must be new to the system.
 for f in $(cd "$MODPATH/system" && find . -type f | sed 's|^\./||'); do
   [ -f "$FIXED" ] && grep -q "^$f " "$FIXED" && continue   # fixed copy of the ROM's own file (above)
+  # the wrapper deliberately takes the hw/ path of LineageOS's layer (wrapped, above)
+  [ $ROM_LAYER = 1 ] && [ "$f" = odm/lib64/hw/camera.oemlayer.v2.so ] && continue
   [ -e "/system/$f" ] && [ ! -d $INSTALLED ] && abort "! ROM already has /system/$f - refusing to overlay it."
 done
 
@@ -195,19 +187,37 @@ fi
 [ -d $INSTALLED/.relabeled ] && cp -rf $INSTALLED/.relabeled "$MODPATH/"
 
 # Clear files of older versions out of the metamodule's copy of this module (common.sh).
-prune_mirror "$MODPATH"
+prune_mirror "$MODPATH" || true
+
+# meta-overlayfs copies the module's partition folders (system/) into one shared ext4 image of fixed
+# size (2 GB by default) after this script, and only warns if that copy fails, which would leave a
+# half-copied module mounted. Refuse up front if it can't fit. The camera app's own models and
+# libraries (blobs.img, about 2 GB) are not copied: they stay in the module folder (post-mount.sh).
+MM_MNT=/data/adb/metamodule/mnt
+if mountpoint -q "$MM_MNT" 2>/dev/null; then
+  NEED=$(du -sk "$MODPATH/system" 2>/dev/null | cut -f1)
+  HAVE=0; [ -d "$MM_MNT/$MODID" ] && HAVE=$(du -sk "$MM_MNT/$MODID" 2>/dev/null | cut -f1)   # replaced by the copy
+  AVAIL=$(df -k "$MM_MNT" 2>/dev/null | awk 'NR == 2 { print $4 }')
+  if [ -n "$NEED" ] && [ -n "$AVAIL" ] && [ $((NEED - HAVE + 65536)) -gt "$AVAIL" ]; then
+    abort "! The metamodule's image has $((AVAIL / 1024)) MB free, this module needs $(((NEED - HAVE) / 1024 + 64)) MB more. Remove other modules or enlarge the metamodule's image (docs/INSTALL.md)."
+  fi
+  ui_print "- Metamodule image: $(((AVAIL - NEED + HAVE) / 1024)) MB left after installing"
+fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 for d in system/system_ext/lib64 system/system_ext/priv-app/OplusCamera/lib/arm64; do
   [ -d "$MODPATH/$d" ] && set_perm_recursive "$MODPATH/$d" 0 0 0755 0644 u:object_r:system_lib_file:s0
 done
-# decoder for the camera SDK's encrypted algorithm config; loaded by the app through the
-# same-process-HAL namespace, so it needs the SP-HAL label (as on OxygenOS / Infinity X)
-# It lives on /odm because libAlgoProcess (on LineageOS's /odm) dlopens it by that absolute path.
 [ -d "$MODPATH/system/odm" ] && set_perm_recursive "$MODPATH/system/odm" 0 0 0755 0644 u:object_r:vendor_file:s0
+# decoder for the camera SDK's encrypted algorithm config; loaded by the app through the
+# same-process-HAL namespace, so it needs the SP-HAL label (as on ColorOS / Infinity X). It lives on
+# /odm because libAlgoProcess (the module's own, blobs.img) dlopens it by that absolute path.
 [ -f "$MODPATH/system/odm/lib64/libOplusSecurity.so" ] && chcon u:object_r:same_process_hal_file:s0 "$MODPATH/system/odm/lib64/libOplusSecurity.so"
+# the camera app's own files: a read-only erofs image that carries the ColorOS odm image's labels;
+# post-mount.sh mounts it (common.sh, mount_blobs). Labelled like the metamodule's own image.
+[ -f "$MODPATH/$BLOB_IMAGE" ] && chcon u:object_r:ksu_file:s0 "$MODPATH/$BLOB_IMAGE"
 # fixed copies keep the SELinux label of the ROM file they replace
-[ -f "$FIXED" ] && while read -r f ctx; do
+[ -f "$FIXED" ] && while read -r f ctx _rest; do
   case "$ctx" in u:object_r:*) ;; *) case "$f" in odm/*) ctx=u:object_r:same_process_hal_file:s0 ;; *) ctx="" ;; esac ;; esac
   [ -n "$ctx" ] && chcon "$ctx" "$MODPATH/system/$f"
 done < "$FIXED"

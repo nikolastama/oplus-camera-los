@@ -1,0 +1,13 @@
+diff --git a/smali_classes2/com/oplus/camera/feature/defer/a.smali b/smali_classes2/com/oplus/camera/feature/defer/a.smali
+index 45ce6eb5..d18f2343 100644
+--- a/smali_classes2/com/oplus/camera/feature/defer/a.smali
++++ b/smali_classes2/com/oplus/camera/feature/defer/a.smali
+@@ -2622,7 +2622,7 @@
+     move-result v1
+ 
+     .line 204
+-    if-eqz v1, :cond_9
++    goto :cond_9
+ 
+     .line 205
+     .line 206

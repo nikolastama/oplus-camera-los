@@ -12,7 +12,7 @@ index 4baa859..17c1396 100644
  .field private static volatile emptyRegistry:Lcom/google/oplus/protobuf/ExtensionRegistryLite;
  
 diff --git a/smali/com/meicam/effect/oppo/MeisheRender.smali b/smali/com/meicam/effect/oppo/MeisheRender.smali
-index efde78f..6201ca9 100644
+index 394d1e9..fa23eae 100644
 --- a/smali/com/meicam/effect/oppo/MeisheRender.smali
 +++ b/smali/com/meicam/effect/oppo/MeisheRender.smali
 @@ -6,7 +6,7 @@
@@ -24,19 +24,16 @@ index efde78f..6201ca9 100644
  
  .field public static mLutDir:Ljava/lang/String; = ""
  
-diff --git a/smali/com/oplus/camera/hdrtransform/HdrTransformPlatform.smali b/smali/com/oplus/camera/hdrtransform/HdrTransformPlatform.smali
-index 99deba9..01e5ef3 100644
---- a/smali/com/oplus/camera/hdrtransform/HdrTransformPlatform.smali
-+++ b/smali/com/oplus/camera/hdrtransform/HdrTransformPlatform.smali
-@@ -8,9 +8,9 @@
+diff --git a/smali/com/oplus/drs/statistics/util/LogUtil.smali b/smali/com/oplus/drs/statistics/util/LogUtil.smali
+index 8aaaa6a..b68e056 100644
+--- a/smali/com/oplus/drs/statistics/util/LogUtil.smali
++++ b/smali/com/oplus/drs/statistics/util/LogUtil.smali
+@@ -6,7 +6,7 @@
+ # static fields
+ .field public static final TAG_PREFIX:Ljava/lang/String; = "OplusTrack-"
  
- .field private static final TAG:Ljava/lang/String; = "HdrTransformPlatform"
- 
--.field private static sAlgoExists:Z = false
-+.field private static sAlgoExists:Z
- 
--.field private static sLibraryLoaded:Z = false
-+.field private static sLibraryLoaded:Z
+-.field private static isDebug:Z = false
++.field private static isDebug:Z
  
  
  # direct methods
@@ -89,10 +86,10 @@ index d4ab463..81d3332 100644
  .field private static sOsenseResClient:Lcom/oplus/osense/OsenseResClient;
  
 diff --git a/smali/com/oplus/ocs/camera/consumer/ApsDataConvert.smali b/smali/com/oplus/ocs/camera/consumer/ApsDataConvert.smali
-index 31b9dbb..9b4dc39 100644
+index 9b9f82d..9f15dd6 100644
 --- a/smali/com/oplus/ocs/camera/consumer/ApsDataConvert.smali
 +++ b/smali/com/oplus/ocs/camera/consumer/ApsDataConvert.smali
-@@ -84,7 +84,7 @@
+@@ -88,7 +88,7 @@
  
  .field private static final TAG:Ljava/lang/String; = "ApsDataConvert"
  
@@ -121,10 +118,10 @@ index 8045fc6..aa3c7f2 100644
  
  # direct methods
 diff --git a/smali/com/oplus/ocs/camera/producer/mode/BaseMode.smali b/smali/com/oplus/ocs/camera/producer/mode/BaseMode.smali
-index be251fa..443d42d 100644
+index 923b66b..9bd96d9 100644
 --- a/smali/com/oplus/ocs/camera/producer/mode/BaseMode.smali
 +++ b/smali/com/oplus/ocs/camera/producer/mode/BaseMode.smali
-@@ -15587,27 +15587,11 @@
+@@ -16367,27 +16367,11 @@
  .end method
  
  .method public isSensorModeNeedWait(II)Z
@@ -155,16 +152,3 @@ index be251fa..443d42d 100644
  .end method
  
  .method public isSnapInProgress()Z
-diff --git a/smali/com/oplus/statistics/util/LogUtil.smali b/smali/com/oplus/statistics/util/LogUtil.smali
-index ed3d2f2..4f675aa 100644
---- a/smali/com/oplus/statistics/util/LogUtil.smali
-+++ b/smali/com/oplus/statistics/util/LogUtil.smali
-@@ -6,7 +6,7 @@
- # static fields
- .field public static final TAG_PREFIX:Ljava/lang/String; = "OplusTrack-"
- 
--.field private static isDebug:Z = false
-+.field private static isDebug:Z
- 
- 
- # direct methods

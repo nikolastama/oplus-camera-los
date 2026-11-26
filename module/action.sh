@@ -10,12 +10,16 @@ TS=$(date +%Y%m%d-%H%M%S)
 SNAP=/data/local/tmp/ocam-session-snapshot.txt
 # Debug settings changed by the first press, with their previous values (restored by the second).
 DBG=/data/local/tmp/ocam-debug-props.txt
+# A pending marker older than a minute belongs to a snapshot job that never finished (the 20-second
+# job was killed); post-fs-data.sh also clears it at boot.
+PENDING=/data/local/tmp/ocam-snapshot.pending
+[ -n "$(find "$PENDING" -mmin +1 2>/dev/null)" ] && rm -f "$PENDING"
 DEBUG_PROPS="persist.camera.aps.core.infoMask persist.camera.aps.core.debugMask persist.camera.aps.core.warningMask
   persist.vendor.camera.oplus.enableLogging persist.camera.logWarningMask oplus.autotest.camera.debug.forcelog
   persist.camera.assert.panic persist.sys.assert.panic"
 # A fresh press offers the self-test (selftest.sh) instead of a debug run. Volume up: self-test.
 # Volume down, no key within 10 s, or no key reader: the debug bundle, as before.
-if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ] && [ -f "$MODDIR/selftest.sh" ] \
+if [ ! -f "$SNAP" ] && [ ! -f "$PENDING" ] && [ -f "$MODDIR/selftest.sh" ] \
    && command -v getevent >/dev/null; then
   echo "Volume up: self-test (about 2 minutes, phone unlocked)"
   echo "Volume down, or wait 10 seconds: debug bundle"
@@ -26,8 +30,8 @@ if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ] && [ -f "$
   fi
   echo ""
 fi
-if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
-  touch /data/local/tmp/ocam-snapshot.pending
+if [ ! -f "$SNAP" ] && [ ! -f "$PENDING" ]; then
+  touch "$PENDING"
   # Turn on the camera app's own processing (APS) logs and the HAL's logs for this debug run
   # (runtime values only; nothing is written to persistent storage), then restart both so they
   # pick the settings up. The previous values are saved and put back by the second press, since
@@ -48,13 +52,13 @@ if [ ! -f "$SNAP" ] && [ ! -f /data/local/tmp/ocam-snapshot.pending ]; then
   am force-stop com.oplus.camera >/dev/null 2>&1
   pkill -f camera.provider-service >/dev/null 2>&1
   ( sleep 20; dumpsys media.camera > "$SNAP.tmp" 2>&1; mv "$SNAP.tmp" "$SNAP"
-    rm -f /data/local/tmp/ocam-snapshot.pending ) >/dev/null 2>&1 &
+    rm -f "$PENDING" ) >/dev/null 2>&1 &
   echo "Step 1 done. Now, within 20 seconds: open the OnePlus camera and leave it on the preview."
   echo "Stay on the preview for about 30 seconds, then take a photo."
   echo "Afterwards come back here and press the action button again to save the bundle."
   exit 0
 fi
-[ -f /data/local/tmp/ocam-snapshot.pending ] && { echo "The session snapshot is still pending (20 s after the first press). Try again in a few seconds."; exit 0; }
+[ -f "$PENDING" ] && { echo "The session snapshot is still pending (20 s after the first press). Try again in a few seconds."; exit 0; }
 W=/data/local/tmp/ocam-debug-$TS
 mkdir -p "$W"
 OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
@@ -62,7 +66,7 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
 {
   echo "== module $(grep ^version= "$MODDIR/module.prop")"
   echo "== kernel $(uname -r)"; getprop ro.lineage.version; getprop ro.build.fingerprint
-  echo "== layer"; ls -laZ /odm/lib64/hw/camera.oemlayer.v2.so /odm/lib64/camera.oemlayer.v2.so /odm/lib64/camera.oemlayer.uilaye2.so /odm/lib64/libsensorbridg2.so /odm/lib64/libOplusSecurity.so 2>&1
+  echo "== layer"; ls -laZ /odm/lib64/hw/camera.oemlayer.v2.so /odm/lib64/camera.oemlayer.v2.so /odm/lib64/camera.oemlayer.uilaye2.so /odm/lib64/libOplusSecurity.so 2>&1
   echo "== mounts on /vendor /odm /system_ext (mountinfo)"; grep -E " /(vendor|odm|system_ext)(/| )" /proc/self/mountinfo | cut -c1-400
   echo "== overlay mounts"; grep -E " overlay " /proc/self/mountinfo | cut -c1-500
   echo "== hw dirs"; for d in /vendor/lib64/hw /odm/lib64/hw /vendor/odm /odm; do ls -ldZi "$d" 2>&1; stat -f -c "%T %i" "$d" 2>&1; done
@@ -72,7 +76,8 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "== metamodule copy of this module (must not contain system/vendor)"; for r in /data/adb/metamodule/mnt /data/adb/modules/meta-overlayfs/mnt; do [ -d "$r/oplus_camera_los/system" ] && ls "$r/oplus_camera_los/system" | sed "s|^|$r: |"; done
   echo "== recent denials touching module paths"; logcat -d -b all 2>/dev/null | grep "avc: *denied" | grep -E 'dev="overlay"|name="hw"|oemlayer|OplusCamera' | tail -20
   [ -f "$MODDIR/oemlayer_disabled" ] && { echo "!! watchdog disabled the layer:"; cat "$MODDIR/oemlayer_disabled"; }
-  [ -f "$MODDIR/ofe_dsca_disabled" ] && { echo "!! watchdog disabled the OFE/DSCA fix:"; cat "$MODDIR/ofe_dsca_disabled"; }
+  [ -f "$MODDIR/fixes.log" ] && { echo "== library fixes remade or switched off after LineageOS updates:"; cat "$MODDIR/fixes.log"; }
+  [ -f "$MODDIR/.sync_mirror" ] && echo "!! metamodule copy not yet updated (done at the next boot's service stage)"
   echo "== data dirs"; ls -ldZ /data/vendor/cam_alog /data/vendor/camera_process /data/vendor/camera_rus /data/system/camera_rus 2>&1
   echo "== relabeled"; cat "$MODDIR"/.relabeled/* 2>/dev/null
   echo "== camera_remote_dump"; ls -laZR /data/vendor/camera_remote_dump 2>&1 | head -60
@@ -81,16 +86,23 @@ OUT=/sdcard/Download/oplus-camera-debug-$TS.tar.gz
   echo "== logd buffer"; logcat -g 2>&1 | head -6
   echo "== app uid"; stat -c %u /data/data/com.oplus.camera 2>&1
   echo "== compiled code (precompile: $(cat "$MODDIR/.precompiled" 2>/dev/null || echo not run))"; dumpsys package com.oplus.camera 2>/dev/null | grep -m2 "status="
-  echo "== library fixes (module copies of ROM files)"
+  echo "== library fixes (module copies of ROM files: copy, label, ROM file, its sha256, offset, original, fixed)"
   cat "$MODDIR/.fixed" 2>&1
-  F=/odm/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so
-  echo "offline service @0x1b394: $(od -An -tx1 -j 111508 -N 4 "$F" | tr -d ' \n') (1b2f40b9 = fixed, 1b1f40b9 = stock)"
-  F=/odm/lib64/libAlgoProcess.so
-  echo "libAlgoProcess @0x1c9f38: $(od -An -tx1 -j 1875768 -N 4 "$F" | tr -d ' \n') (e93341b9 = fixed, e97740f9 = stock)"
-  F=/odm/lib64/libcamxofehwl.so
-  echo "OFE helper path @0x31661: $(od -An -tx1 -j 202337 -N 4 "$F" 2>/dev/null | tr -d ' \n') (2f6f646d = fixed /odm, missing = not applied)"
-  ls -lZ /odm/lib64/libcamxofehwl.so /odm/lib64/libcamxtintlessalgo.so /odm/lib64/libdscaalgo.so 2>&1
-  grep -h "libcamxofehwl\|libdscaalgo\|libcamxtintless" /proc/$(pidof vendor.qti.camera.provider-service_64 | cut -d" " -f1)/maps 2>/dev/null | awk '{print $6}' | sort -u
+  # each fixed copy: is it in place, and is the ROM file still the one it was made from?
+  . "$MODDIR/common.sh" 2>/dev/null
+  while read -r f ctx rom sha off o n; do
+    [ -n "$rom" ] || { echo "$f: (no ROM record)"; continue; }
+    if [ ! -f "$MODDIR/system/$f" ]; then st="copy missing"
+    elif [ "$(sha256sum "$MODDIR/system/$f" | cut -d' ' -f1)" = "$(sha256sum "/$f" 2>/dev/null | cut -d' ' -f1)" ]; then st="mounted"
+    else st="NOT the mounted file (metamodule copy outdated?)"; fi
+    echo "$f: $st, edits at $off, made from $rom"
+  done < "$MODDIR/.fixed" 2>/dev/null
+  echo "module ships the camera app's own files (LineageOS no longer does): $(wc -l < "$MODDIR/.app_blobs" 2>/dev/null || echo no)"
+  echo "== camera app files (module blobs.img, mounted by post-mount.sh)"; grep -E "oplus_camera_blobs|$MODDIR/blobs" /proc/mounts; cat "$MODDIR/mount.log" 2>&1 | tail -6
+  ls -lZ /odm/lib64/libAlgoProcess.so /odm/etc/camera/singleblur/personseg.bin 2>&1
+  echo "OnePlus camera layer: $(if grep -q '^odm/lib64/camera.oemlayer.v2.so .* /odm/lib64/hw/' "$MODDIR/.fixed" 2>/dev/null; then echo "LineageOS's, wrapped"; else echo "LineageOS's, not wrapped"; fi)"
+  ls -lZ /vendor/lib64/libdscaalgo.so 2>&1
+  grep -h "libcamxofehwl\|libdscaalgo\|libcamxtintless\|libEIS\|oemlayer" /proc/$(pidof vendor.qti.camera.provider-service_64 | cut -d" " -f1)/maps 2>/dev/null | awk '{print $6}' | sort -u
   echo "face detection (HW config): $(grep -m1 -E 'fdSupport *=' /odm/etc/camera/CameraHWConfiguration.config 2>&1 | tr -s ' ') (TRUE = fixed, FALSE = LineageOS)"
   echo "encoder buffer cap (wrapper): persist.vendor.camera.oplus_los.encbuf=$(getprop persist.vendor.camera.oplus_los.encbuf) (empty = 40, 0 = no cap)"
   echo "frame-timestamp fix (wrapper): persist.vendor.camera.oplus_los.tsfix=$(getprop persist.vendor.camera.oplus_los.tsfix) (empty = on)"
@@ -115,7 +127,7 @@ for f in /system/lib64/libcameraservice.so /system/bin/cameraserver /system/lib6
   [ -f "$f" ] && cp "$f" "$W/bin/" 2>/dev/null
 done
 sha256sum "$W"/bin/* > "$W/bin/SHA256SUMS" 2>/dev/null
-# hashes of the vendor graphics-buffer and camera service files, to compare with OxygenOS
+# hashes of the vendor graphics-buffer and camera service files, to compare with ColorOS
 {
   for f in /vendor/bin/hw/vendor.qti.hardware.display.allocator-service /vendor/bin/hw/vendor.qti.camera.provider-service_64 \
            /vendor/lib64/hw/mapper.qti.so /vendor/lib64/libgralloccore.so /vendor/lib64/libgrallocutils.so \

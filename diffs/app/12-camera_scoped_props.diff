@@ -1,0 +1,39 @@
+diff --git a/smali/t4/g.smali b/smali/t4/g.smali
+index 4f5de72c..4b56ff64 100644
+--- a/smali/t4/g.smali
++++ b/smali/t4/g.smali
+@@ -332,7 +332,7 @@
+ 
+     .line 2
+     :try_start_0
+-    const-string v1, "android.os.SystemProperties"
++    const-string v1, "com.oplus.camera.los.LosProps"
+ 
+     .line 3
+     .line 4
+diff --git a/smali_classes31/com/coui/appcompat/COUIMaterialStateManager.smali b/smali_classes31/com/coui/appcompat/COUIMaterialStateManager.smali
+index 4a6bfa4c..64bd9d17 100644
+--- a/smali_classes31/com/coui/appcompat/COUIMaterialStateManager.smali
++++ b/smali_classes31/com/coui/appcompat/COUIMaterialStateManager.smali
+@@ -898,7 +898,7 @@
+     .line 5
+     .line 6
+     :try_start_0
+-    const-string v0, "android.os.SystemProperties"
++    const-string v0, "com.oplus.camera.los.LosProps"
+ 
+     .line 7
+     .line 8
+diff --git a/smali_classes31/v3/a.smali b/smali_classes31/v3/a.smali
+index 2c46ae07..18a839b7 100644
+--- a/smali_classes31/v3/a.smali
++++ b/smali_classes31/v3/a.smali
+@@ -517,7 +517,7 @@
+     .line 4
+     .line 5
+     :try_start_0
+-    const-string v2, "android.os.SystemProperties"
++    const-string v2, "com.oplus.camera.los.LosProps"
+ 
+     .line 6
+     .line 7

@@ -141,7 +141,7 @@ if __name__ == '__main__':
         'missing_classes': dict(missing_cls),
         'missing_members': {k: sorted(v) for k, v in missing_mem.items()},
     }
-    json.dump(out, open(sys.argv[3], 'w'), indent=1)
+    json.dump(out, open(sys.argv[3], 'w', newline='\n'), indent=1)
     pk = collections.Counter('/'.join(k.split('/')[:3]) for k in missing_cls)
     print('missing classes:', len(missing_cls))
     print(pk.most_common(25))

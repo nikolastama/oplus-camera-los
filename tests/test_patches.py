@@ -26,8 +26,10 @@ NEEDS_FULL_SOURCE = {
     'sdk_session_package_tag',
     'camera_no_telemetry',  # anchors on method headers far above the changed lines
     'camera_hide_dead_settings',  # checks the namespace declared at the top of the file
-    'camera_scoped_props',  # counts both reflective reads in their whole files
+    'camera_scoped_props',  # checks every file that names the property
     'stubs_scoped_props',  # adds a new class file
+    'stubs_framework_classes',  # adds new class files
+    'sdk_facebeauty_path',  # checks the whole getCameraAppLibDirectory method
 }
 
 
@@ -56,7 +58,7 @@ def apply(fn, before):
         root = Path(td)
         for f, text in before.items():
             (root / f).parent.mkdir(parents=True, exist_ok=True)
-            (root / f).write_text(text, encoding='utf-8', errors='surrogateescape')
+            (root / f).write_text(text, encoding='utf-8', errors='surrogateescape', newline='')
         fn(root)
         return {f: (root / f).read_text(encoding='utf-8', errors='surrogateescape') for f in before}
 
@@ -76,7 +78,7 @@ class RecordedDiffs(unittest.TestCase):
                 for f, (_, after) in files.items():
                     self.assertEqual(result[f], after, f)
                 checked += 1
-        self.assertGreaterEqual(checked, 10)
+        self.assertGreaterEqual(checked, 9)
 
 
 class RestrictExportedComponents(unittest.TestCase):
@@ -102,6 +104,35 @@ class RestrictExportedComponents(unittest.TestCase):
     def test_missing_component_fails_loudly(self):
         with self.assertRaises(ValueError):
             apply(P.restrict_exported_components, {'AndroidManifest.xml': '<manifest/>'})
+
+
+class FailLoudly(unittest.TestCase):
+    def test_manifest_without_oem_permissions_stops_the_build(self):
+        with self.assertRaises(ValueError):
+            apply(P.strip_oem_component_permissions, {'AndroidManifest.xml': '<manifest>\n</manifest>\n'})
+
+    def test_anim_level_read_not_redirected_stops_the_build(self):
+        read = (
+            '    const-string %s, "android.os.SystemProperties"\n\n    .line 7\n'
+            '    invoke-static {v1}, Ljava/lang/Class;->forName(Ljava/lang/String;)Ljava/lang/Class;\n'
+            '    const-string v2, "persist.sys.oplus.anim_level"\n'
+        )
+        wrapper = (
+            '    const-string v0, "persist.sys.oplus.anim_level"\n'
+            '    invoke-static {v0, v1}, Lcom/oplus/wrapper/os/SystemProperties;->getInt(Ljava/lang/String;I)I\n'
+        )
+        files = {
+            'smali/t4/g.smali': read % 'v1',
+            'smali_classes31/v3/a.smali': read % 'v0',
+            'smali/c1/f.smali': wrapper,
+        }
+        with self.assertRaises(ValueError):
+            apply(P.camera_scoped_props, files)
+        files['smali_classes31/v3/a.smali'] = read % 'v1'
+        out = apply(P.camera_scoped_props, files)
+        self.assertIn('"com.oplus.camera.los.LosProps"', out['smali/t4/g.smali'])
+        self.assertIn('"com.oplus.camera.los.LosProps"', out['smali_classes31/v3/a.smali'])
+        self.assertEqual(out['smali/c1/f.smali'], wrapper)
 
 
 class ByteSafeIO(unittest.TestCase):

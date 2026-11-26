@@ -1,6 +1,6 @@
 id=oplus_camera_los
 name=OnePlus Camera for LineageOS (OnePlus 15)
-version=v0.38 (OxygenOS 16.0.10.601)
-versionCode=44
+version=v0.39 (ColorOS 11.C.80)
+versionCode=46
 author=Nikola
-description=Stock OnePlus 15 camera on LineageOS 24 for infiniti. Removing the module removes the app, its data, its props and its policy.
+description=Stock OnePlus 15 camera (ColorOS 11.C.80) on LineageOS 24 with ColorOS blobs for infiniti. Removing the module removes the app, its data, its props and its policy.

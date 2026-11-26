@@ -11,11 +11,11 @@ below, any other key falls through to the real system property. Edit PROPS, then
 
 from pathlib import Path
 
-# Values from OxygenOS CPH2745_16.0.10.601.
+# Values from ColorOS CPH2745_17.0.1.201(EX01) (11.C.80); persist.camera.override_* are not in its props.
 PROPS = {
-    'ro.build.version.oplus.api': '38',
-    'ro.build.version.oplus.sub_api': '50',
-    'ro.build.version.oplusrom': 'V16.1.0',
+    'ro.build.version.oplus.api': '40',
+    'ro.build.version.oplus.sub_api': '25',
+    'ro.build.version.oplusrom': 'V17.0.0',
     'ro.oplus.system.camera.name': 'com.oplus.camera',
     'ro.oplus.camera.defercap.support': '1',  # required: the app throws without it
     'ro.oplus.camera.defercap.all.quick.visible.support': '1',
@@ -93,14 +93,20 @@ BODY = f'''.class public final Lcom/oplus/camera/los/LosProps;
     return-object v0
 .end method
 
+# getInt/getLong: a value that isn't a number gives the default, as in SystemProperties
 .method public static getInt(Ljava/lang/String;I)I
     .registers 3
     invoke-static {{p0}}, Lcom/oplus/camera/los/LosProps;->value({S}){S}
     move-result-object v0
     if-eqz v0, :real
+    :try_start_0
     invoke-static {{v0}}, Ljava/lang/Integer;->parseInt({S})I
     move-result v0
+    :try_end_0
+    .catch Ljava/lang/NumberFormatException; {{:try_start_0 .. :try_end_0}} :bad
     return v0
+    :bad
+    return p1
     :real
     invoke-static {{p0, p1}}, {SP}->getInt({S}I)I
     move-result v0
@@ -112,9 +118,14 @@ BODY = f'''.class public final Lcom/oplus/camera/los/LosProps;
     invoke-static {{p0}}, Lcom/oplus/camera/los/LosProps;->value({S}){S}
     move-result-object v0
     if-eqz v0, :real
+    :try_start_0
     invoke-static {{v0}}, Ljava/lang/Long;->parseLong({S})J
     move-result-wide v0
+    :try_end_0
+    .catch Ljava/lang/NumberFormatException; {{:try_start_0 .. :try_end_0}} :bad
     return-wide v0
+    :bad
+    return-wide p1
     :real
     invoke-static {{p0, p1, p2}}, {SP}->getLong({S}J)J
     move-result-wide v0
@@ -158,5 +169,5 @@ BODY = f'''.class public final Lcom/oplus/camera/los/LosProps;
 
 if __name__ == '__main__':
     out = Path(__file__).parent / 'smali-stubs' / 'LosProps.smali'
-    out.write_text(BODY.replace('@VALUE@', '\n'.join(value_method())))
+    out.write_text(BODY.replace('@VALUE@', '\n'.join(value_method())), newline='\n')
     print(out)

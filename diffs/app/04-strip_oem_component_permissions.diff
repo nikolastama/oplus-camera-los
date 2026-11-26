@@ -1,8 +1,8 @@
 diff --git a/AndroidManifest.xml b/AndroidManifest.xml
-index c344699..eff3a40 100644
+index 2c6e009b..121696c8 100644
 --- a/AndroidManifest.xml
 +++ b/AndroidManifest.xml
-@@ -197,17 +197,17 @@
+@@ -217,17 +217,17 @@
          </activity>
          <meta-data android:name="com.oplus.ocs.oaf.AUTH_CODE" android:value="ATBFAiEAlI0PR7tQY2lsimkF/Sl83V1obizR4o5u5B9c8DiWlTcCIA9TYoWYW1yG39y6Yi2bO0j2pu76dcB+1M18jtY+qbiYakN5kmAAAAA="/>
          <meta-data android:name="AccessoryServicesLocation" android:value="/res/xml/accessoryservices.xml"/>
@@ -23,7 +23,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="com.heytap.accessory.streamconnection"/>
              </intent-filter>
-@@ -261,7 +261,7 @@
+@@ -285,7 +285,7 @@
              <meta-data android:name="com.android.keyguard.layout" android:resource="@layout/start_fake_layout"/>
              <meta-data android:name="com.android.keyguard.layout.none.fold.remap" android:resource="@layout/start_fake_layout_none_fold_remap"/>
          </activity>
@@ -32,7 +32,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="oplus.media.action.STILL_IMAGE_CAMERA"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -270,7 +270,7 @@
+@@ -294,7 +294,7 @@
              <meta-data android:name="com.android.keyguard.layout" android:resource="@layout/start_fake_layout"/>
              <meta-data android:name="com.android.keyguard.layout.none.fold.remap" android:resource="@layout/start_fake_layout_none_fold_remap"/>
          </activity>
@@ -41,7 +41,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="oplus.media.action.STILL_IMAGE_CAMERA_SECURE"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -300,21 +300,21 @@
+@@ -324,21 +324,21 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -66,7 +66,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="oplus.intent.action.AUTO_QUICK_CAPTURE_SET"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -329,32 +329,32 @@
+@@ -360,33 +360,33 @@
              <meta-data android:name="com.android.settings.APP_PRIORITY" android:value="30010"/>
          </activity>
          <activity android:configChanges="mcc|mnc|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale" android:exported="false" android:launchMode="singleTop" android:name="com.oplus.camera.setting.ScreenOffActivity" android:resizeableActivity="false" android:screenOrientation="behind" android:showWhenLocked="true" android:taskAffinity="com.oplus.camera" android:theme="@style/ThemeCamera.FullScreen" android:windowSoftInputMode="stateAlwaysHidden|adjustPan"/>
@@ -91,6 +91,7 @@ index c344699..eff3a40 100644
                  <action android:name="oplus.intent.action.KEY_MAGIC_MESSENGER"/>
              </intent-filter>
          </service>
+         <provider android:authorities="com.oplus.camera.keymagic.launch_modes" android:exported="true" android:name="com.oplus.camera.feature.keymagic.KeyMagicLaunchModesProvider" android:permission="com.oplus.camera.permission.CAMERA_MAGIC_PROVIDER"/>
 -        <activity android:configChanges="keyboardHidden|orientation|screenLayout|uiMode|screenSize" android:exported="false" android:launchMode="singleTop" android:name="com.oplus.camera.setting.AppConfigSetActivity" android:permission="oplus.permission.OPLUS_COMPONENT_SAFE" android:resizeableActivity="true" android:screenOrientation="behind" android:showWhenLocked="true" android:theme="@style/AppNoTitleTheme.PreferenceFragment">
 +        <activity android:configChanges="keyboardHidden|orientation|screenLayout|uiMode|screenSize" android:exported="false" android:launchMode="singleTop" android:name="com.oplus.camera.setting.AppConfigSetActivity" android:resizeableActivity="true" android:screenOrientation="behind" android:showWhenLocked="true" android:theme="@style/AppNoTitleTheme.PreferenceFragment">
              <intent-filter>
@@ -104,7 +105,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="oplus.intent.action.APP_SETTINGS"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -369,7 +369,7 @@
+@@ -401,7 +401,7 @@
              </intent-filter>
              <meta-data android:name="com.android.settings.APP_PRIORITY" android:value="30010"/>
          </activity>
@@ -113,7 +114,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="com.oplus.setting.ai.action.SETTING_ENTRANCE"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -382,7 +382,7 @@
+@@ -414,7 +414,7 @@
              <meta-data android:name="com.oplus.setting.ai.PROVIDER" android:value="com.oplus.ai.camera.visibility_attr_provider"/>
              <meta-data android:name="com.oplus.setting.ai.PRIORITY" android:value="1"/>
          </activity>
@@ -122,7 +123,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="oplus.intent.action.APPDebug"/>
                  <category android:name="android.intent.category.DEFAULT"/>
-@@ -400,12 +400,12 @@
+@@ -432,7 +432,7 @@
                  <action android:name="android.intent.action.CAMERA_BUTTON"/>
              </intent-filter>
          </receiver>
@@ -131,13 +132,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="com.oplusos.sau.DATARES_UPDATE"/>
              </intent-filter>
-         </receiver>
--        <receiver android:exported="false" android:name="com.oplus.camera.PreLoadReceiver" android:permission="oplus.permission.OPLUS_COMPONENT_SAFE">
-+        <receiver android:exported="false" android:name="com.oplus.camera.PreLoadReceiver">
-             <intent-filter>
-                 <action android:name="com.oplus.action.PRE_LOAD_CAMERA"/>
-             </intent-filter>
-@@ -442,12 +442,12 @@
+@@ -469,12 +469,12 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -152,7 +147,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="com.camera.action.START_APS_SERVICE"/>
              </intent-filter>
-@@ -457,7 +457,7 @@
+@@ -484,7 +484,7 @@
                  <action android:name="android.service.quicksettings.action.QS_TILE"/>
              </intent-filter>
          </service>
@@ -161,7 +156,7 @@ index c344699..eff3a40 100644
              <intent-filter>
                  <action android:name="com.oplus.intent.action.CAMERA_BLUE_TOOTH_SCAN_SERVICE"/>
              </intent-filter>
-@@ -470,14 +470,14 @@
+@@ -497,14 +497,14 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -180,7 +175,7 @@ index c344699..eff3a40 100644
          <service android:enabled="true" android:exported="false" android:name="com.oplus.camera.screen.FolderAngleDetectService"/>
          <service android:exported="true" android:name="com.oplus.camera.remote.RemoteService" android:permission="com.oplus.camera.remote.service.permission.CAPTURE_PREVIEW">
              <intent-filter>
-@@ -485,9 +485,9 @@
+@@ -512,9 +512,9 @@
              </intent-filter>
          </service>
          <meta-data android:name="com.oplus.camera.CAPTURE_PREVIEW_SUPPORT" android:value="1"/>
@@ -192,7 +187,7 @@ index c344699..eff3a40 100644
              <meta-data android:name="uniqueID" android:value="1880"/>
              <meta-data android:name="version" android:value="1"/>
              <meta-data android:name="isVendorSupport" android:value="true"/>
-@@ -498,7 +498,7 @@
+@@ -525,12 +525,12 @@
              </intent-filter>
          </service>
          <activity android:name="com.customer.feedback.sdk.activity.FeedbackActivity"/>
@@ -201,7 +196,14 @@ index c344699..eff3a40 100644
              <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_file_paths"/>
          </provider>
          <provider android:authorities="com.oplus.camera.entry" android:exported="true" android:name="com.oplus.camera.entry.EntryProvider"/>
-@@ -509,15 +509,15 @@
+-        <provider android:authorities="com.oplus.camera.oclaw" android:exported="true" android:name="com.oplus.camera.oclaw.AiSupportContentProvider" android:permission="com.oplus.permission.safe.ASSISTANT"/>
+-        <provider android:authorities="com.oplus.camera.master_preset_deferred_import" android:exported="true" android:name="com.oplus.camera.preset.MasterPresetDeferredImportProvider" android:permission="com.oplus.permission.safe.ASSISTANT"/>
++        <provider android:authorities="com.oplus.camera.oclaw" android:exported="true" android:name="com.oplus.camera.oclaw.AiSupportContentProvider"/>
++        <provider android:authorities="com.oplus.camera.master_preset_deferred_import" android:exported="true" android:name="com.oplus.camera.preset.MasterPresetDeferredImportProvider"/>
+         <provider android:authorities="com.oplus.camera.gallery.cache.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="com.oplus.gallery3d.GalleryCacheFileProvider">
+             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_gallery_file_paths"/>
+         </provider>
+@@ -538,15 +538,15 @@
              <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_common_file_paths"/>
          </provider>
          <provider android:authorities="com.oplus.camera.gallery.cache.provider" android:exported="true" android:name="com.oplus.camera.component.SandBoxContentProvider" android:permission="com.oplus.camera.sandbox.permission.SANDBOX_PROVIDER"/>
@@ -218,11 +220,11 @@ index c344699..eff3a40 100644
 +        <provider android:authorities="com.oplus.camera.gallery.info.provider" android:exported="true" android:name="com.oplus.camera.component.CameraInfoProvider"/>
 +        <provider android:authorities="com.oplus.ai.camera.visibility_attr_provider" android:exported="true" android:grantUriPermissions="true" android:name="com.oplus.camera.setting.AiCameraVisibleProvider"/>
          <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true"/>
-         <uses-library android:name="com.oplus.camera.unit.sdk" android:required="false"/>
-         <provider android:authorities="com.oplus.camera.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="com.oplus.scanengine.router.ShareFileProvider">
-@@ -559,7 +559,7 @@
+         <activity android:configChanges="locale|keyboardHidden|orientation|screenLayout|uiMode|screenSize" android:exported="false" android:launchMode="singleTop" android:name="com.oplus.camera.privacypolicy.CameraPrivacyPolicyActivity" android:screenOrientation="behind" android:theme="@style/CameraPrivacyPolicyTheme">
+             <intent-filter>
+@@ -609,7 +609,7 @@
          <meta-data android:name="com.oplus.support:api-adapter" android:value="13.0.0"/>
-         <meta-data android:name="protocol_version_codes" android:value="207"/>
+         <meta-data android:name="protocol_version_codes" android:value="209"/>
          <meta-data android:name="com.oplus.appplatform:sysapi" android:value="13.0.4"/>
 -        <provider android:authorities="com.oplus.camera.oplus.epona" android:directBootAware="true" android:exported="true" android:multiprocess="true" android:name="com.oplus.epona.internal.EponaProvider" android:permission="com.oplus.permission.safe.SECURITY"/>
 +        <provider android:authorities="com.oplus.camera.oplus.epona" android:directBootAware="true" android:exported="true" android:multiprocess="true" android:name="com.oplus.epona.internal.EponaProvider"/>

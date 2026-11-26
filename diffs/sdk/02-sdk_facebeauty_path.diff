@@ -1,13 +1,13 @@
-diff --git a/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali b/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
-index f58791b..fb54177 100644
---- a/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
-+++ b/smali/com/oplus/camera/facebeauty/OplusFaceBeautyPreview.smali
-@@ -16,7 +16,7 @@
+diff --git a/smali/com/oplus/ocs/camera/consumer/apsAdapter/adapter/ApsUtils.smali b/smali/com/oplus/ocs/camera/consumer/apsAdapter/adapter/ApsUtils.smali
+index 92ba393..e2238cf 100644
+--- a/smali/com/oplus/ocs/camera/consumer/apsAdapter/adapter/ApsUtils.smali
++++ b/smali/com/oplus/ocs/camera/consumer/apsAdapter/adapter/ApsUtils.smali
+@@ -960,7 +960,7 @@
+     return-object v0
  
-     const-string v2, "ApsFaceBeautyPreviewProductJni"
+     :cond_0
+-    const-string v0, "/product/lib64"
++    const-string v0, "/system_ext/lib64"
  
--    const-string v3, "/product/lib64/libApsFaceBeautyPreviewProductJni.so"
-+    const-string v3, "/system_ext/lib64/libApsFaceBeautyPreviewProductJni.so"
- 
-     if-nez v0, :cond_3
- 
+     return-object v0
+ .end method

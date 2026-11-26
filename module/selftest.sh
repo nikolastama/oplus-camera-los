@@ -9,6 +9,7 @@
 MODDIR=${0%/*}
 PKG=com.oplus.camera
 DCIM=/sdcard/DCIM/Camera
+DCIM_MS=/storage/emulated/0/DCIM/Camera
 TS=$(date +%Y%m%d-%H%M%S)
 REPORT=/sdcard/Download/oplus-camera-selftest-$TS.txt
 W=/data/local/tmp/ocam-selftest-$TS
@@ -171,25 +172,27 @@ ROUTE=$(echo "$LA" | grep -c "OplusCamLosWrap.*session moved to Qualcomm")
 [ "$ROUTE" -eq 0 ] && result PASS "all sessions stayed on the OnePlus layer" ||
   result NOTE "$ROUTE session(s) were moved to Qualcomm's HAL (expected only for other apps)"
 [ -f "$MODDIR/oemlayer_disabled" ] && result FAIL "the boot watchdog has switched the OnePlus layer off: $(cat "$MODDIR/oemlayer_disabled")"
-[ -f "$MODDIR/ofe_dsca_disabled" ] && result FAIL "the boot watchdog has switched the OFE/DSCA fix off: $(cat "$MODDIR/ofe_dsca_disabled")"
-# OFE helper libraries (customize.sh fix 3): with the fix the HAL must not report the DSCA library
-# as missing; without the fix (not applied on this ROM) the old message is expected.
-DS=$(echo "$LA" | grep -c "Failed to open DSCA library\|Handle is NULL for DSCA")
-if [ -f "$MODDIR/system/odm/lib64/libcamxofehwl.so" ]; then
-  if [ "$DS" -gt 0 ]; then
-    result FAIL "OFE still can't open the DSCA library ($DS log lines)"
-  elif grep -qs "/odm/lib64/libdscaalgo.so" "/proc/$(pidof $PROVIDER | cut -d' ' -f1)/maps"; then
-    result PASS "OFE loaded the DSCA library from /odm"
+# The camera app's own libraries and models: mounted from the module folder (post-mount.sh)
+for d in /odm/lib64 /odm/etc/camera; do
+  if awk -v d="$d" '$1 == "oplus_camera_blobs" && $2 == d { f = 1 } END { exit !f }' /proc/mounts; then
+    result PASS "camera app files mounted on $d"
   else
-    result NOTE "DSCA library not loaded yet (no offline-front-end shot in this test)"
+    result FAIL "camera app files NOT mounted on $d (see mount.log in the module folder)"
   fi
+done
+
+# Qualcomm's DSCA library (offline front end): LineageOS's ColorOS-blob builds ship it themselves
+DS=$(echo "$LA" | grep -c "Failed to open DSCA library\|Handle is NULL for DSCA")
+if [ "$DS" -gt 0 ]; then
+  result FAIL "the offline front end can't open the DSCA library ($DS log lines)"
 else
-  result NOTE "OFE/DSCA fix not installed (DSCA stays off)"
+  result PASS "DSCA library: no load errors"
 fi
 
 # ---- clean up the test photos and video (and their gallery entries)
 media_list | comm -13 "$W/before" - | while read -r f; do
-  content delete --uri content://media/external/file --where "_data='$DCIM/$f'" >/dev/null 2>&1
+  # MediaStore records the primary storage path, not the /sdcard link
+  content delete --uri content://media/external/file --where "_data='$DCIM_MS/$f'" >/dev/null 2>&1
   rm -f "$DCIM/$f"
 done
 

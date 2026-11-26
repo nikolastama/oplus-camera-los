@@ -23,21 +23,21 @@
     invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
     move-result v1
     if-eqz v1, :n0
-    const-string v0, "38"
+    const-string v0, "40"
     return-object v0
     :n0
     const-string v0, "ro.build.version.oplus.sub_api"
     invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
     move-result v1
     if-eqz v1, :n1
-    const-string v0, "50"
+    const-string v0, "25"
     return-object v0
     :n1
     const-string v0, "ro.build.version.oplusrom"
     invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
     move-result v1
     if-eqz v1, :n2
-    const-string v0, "V16.1.0"
+    const-string v0, "V17.0.0"
     return-object v0
     :n2
     const-string v0, "ro.oplus.system.camera.name"
@@ -124,14 +124,20 @@
     return-object v0
 .end method
 
+# getInt/getLong: a value that isn't a number gives the default, as in SystemProperties
 .method public static getInt(Ljava/lang/String;I)I
     .registers 3
     invoke-static {p0}, Lcom/oplus/camera/los/LosProps;->value(Ljava/lang/String;)Ljava/lang/String;
     move-result-object v0
     if-eqz v0, :real
+    :try_start_0
     invoke-static {v0}, Ljava/lang/Integer;->parseInt(Ljava/lang/String;)I
     move-result v0
+    :try_end_0
+    .catch Ljava/lang/NumberFormatException; {:try_start_0 .. :try_end_0} :bad
     return v0
+    :bad
+    return p1
     :real
     invoke-static {p0, p1}, Landroid/os/SystemProperties;->getInt(Ljava/lang/String;I)I
     move-result v0
@@ -143,9 +149,14 @@
     invoke-static {p0}, Lcom/oplus/camera/los/LosProps;->value(Ljava/lang/String;)Ljava/lang/String;
     move-result-object v0
     if-eqz v0, :real
+    :try_start_0
     invoke-static {v0}, Ljava/lang/Long;->parseLong(Ljava/lang/String;)J
     move-result-wide v0
+    :try_end_0
+    .catch Ljava/lang/NumberFormatException; {:try_start_0 .. :try_end_0} :bad
     return-wide v0
+    :bad
+    return-wide p1
     :real
     invoke-static {p0, p1, p2}, Landroid/os/SystemProperties;->getLong(Ljava/lang/String;J)J
     move-result-wide v0

@@ -75,7 +75,12 @@ _Static_assert(__builtin_offsetof(shutter_msg_t, ts) == 0x10 && __builtin_offset
 _Static_assert(__builtin_offsetof(request_t, input) == 0x10 && __builtin_offsetof(result_t, result) == 0x08, "req/res");
 
 /* ---- fake camera service (the provider's callback ops) ---- */
-typedef struct provider_cb { void (*result)(const void *, const void *); void (*notify)(const void *, const void *); } provider_cb_t;
+/* the provider's camera3_callback_ops: result, notify, request/return_stream_buffers, spare slots */
+typedef struct provider_cb {
+    void (*result)(const void *, const void *);
+    void (*notify)(const void *, const void *);
+    void *more[CB_SLOTS - 2];
+} provider_cb_t;
 static provider_cb_t g_prov;
 static const void *g_last_cb_arg;
 static uint64_t g_seen_ts, g_seen_readout;
@@ -290,6 +295,7 @@ int main(void) {
     /* 13. routing: the OnePlus camera's mode switches (op mode 0 between two OnePlus modes) stay
      *     on the OnePlus layer; another app's standard session is moved to Qualcomm's HAL */
     g_real_open = fake_real_open;
+    g_real = &g_fake_camx;   /* only its address is used: the fake open ignores the module */
     g_fake_camx.common.methods = &g_camx_methods;
     g_camx_pp = &g_fake_camx_p; g_set_oplus_cb_pp = &g_fake_set_cb_p; g_oplus_cb = &g_fake_oplus_cb;
     CHECK(routing_enabled(), "routing should be on with the layer's hooks present");
@@ -371,6 +377,64 @@ int main(void) {
                   (long long)g_seen_meta_ts, (unsigned long long)prev);
         }
         CHECK(g_live_meta == 0, "burst leaked metadata (%d)", g_live_meta);
+        free(q);
+    }
+
+    /* 18. an exempt (ZSL still) frame newer than every earlier one: the camera service remembers its
+     *     timestamp too, so the next ordinary frame must be raised past it */
+    {
+        proxy_t *q = new_session(1);
+        request(q, 1, &g_set_plain, 0);
+        hal_shutter(1, 1000, 0);
+        request(q, 2, &g_set_zsl_still, 0);
+        hal_shutter(2, 3000, 0);
+        CHECK(g_seen_ts == 3000, "exempt frame should keep its timestamp");
+        request(q, 3, &g_set_plain, 0);
+        hal_shutter(3, 2000, 0);
+        CHECK(g_seen_ts == 3001, "frame after a newer exempt frame should be sent as 3001, got %llu",
+              (unsigned long long)g_seen_ts);
+        /* an unknown frame newer than all counts as well */
+        hal_shutter(77, 5000, 0);
+        request(q, 4, 0, 0);
+        hal_shutter(4, 4000, 0);
+        CHECK(g_seen_ts == 5001, "frame after a newer unknown frame should be sent as 5001, got %llu",
+              (unsigned long long)g_seen_ts);
+        /* an older exempt frame doesn't lower the bar */
+        request(q, 5, &g_set_zsl_still, 0);
+        hal_shutter(5, 100, 0);
+        request(q, 6, &g_set_plain, 0);
+        hal_shutter(6, 6000, 0);
+        CHECK(g_seen_ts == 6000, "newer ordinary frame changed after an old exempt one");
+        free(q);
+    }
+
+    /* 19. the buffer callbacks (slots 2, 3) are always forwarded: the provider fills them in only
+     *     after initialize(). Other slots it leaves NULL stay NULL; set ones are forwarded. */
+    {
+        provider_cb_t prov = g_prov;
+        memset(prov.more, 0, sizeof(prov.more));   /* slots 2.. empty, as at initialize() */
+        prov.more[3] = (void *)prov_notify;         /* slot 5: set */
+        proxy_t *q = calloc(1, sizeof(*q));
+        q->cb = &prov; q->tsfix = 1;
+        void **o = (void **)cb_for(q, 1);
+        CHECK(o[0] == (void *)cb_result && o[1] == (void *)cb_notify, "result/notify not wrapped");
+        CHECK(o[2] != 0 && o[3] != 0, "buffer callbacks must be forwarded even while still NULL");
+        CHECK(o[5] != 0, "implemented slot 5 must be forwarded");
+        int nonnull = 0;
+        for (int i = 4; i < CB_SLOTS; i++) nonnull += i != 5 && o[i] != 0;
+        CHECK(nonnull == 0, "%d unimplemented callback slot(s) offered to the layer", nonnull);
+        free(q);
+    }
+
+    /* 20. a device left without a backend (both reopens failed) refuses calls instead of crashing */
+    {
+        proxy_t *q = calloc(1, sizeof(*q));
+        q->is_oem = 1; q->tsfix = 1; q->oplus_owned = 1;   /* stays on the layer: no reopen */
+        request_t r; memset(&r, 0, sizeof(r));
+        CHECK(proxy_request(&q->dev, &r) == -19, "request without a backend should fail with -ENODEV");
+        CHECK(proxy_initialize(&q->dev, &g_prov) == -19, "initialize without a backend should fail");
+        camera3_stream_configuration_t c = {0, 0, 0, 0};
+        CHECK(proxy_configure(&q->dev, &c) != 0, "configure without a backend should fail");
         free(q);
     }
 

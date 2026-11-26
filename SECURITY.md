@@ -13,7 +13,7 @@ users can judge them; each one can be found in the file named.
 | Data directories | Creates `/data/system/camera_rus` (and `jobSize` in it) and `/data/vendor/camera_rus` (plus `cam_alog`/`camera_process` on ROMs that lack them), and relabels three existing LineageOS dirs to `vendor_camera_data_file` (`mlstrustedobject`). Since v0.37 the folders the module created are owned by the camera app, mode `2770` (group: the app's shared group for `/data/system/camera_rus`, `camera` for the vendor ones); they are `0777` only until the app exists (first boot after install). LineageOS's own folders keep their own owner and mode. | `module/post-fs-data.sh`, `module/common.sh` | Access is limited by both owner/mode and SELinux labels; the original labels are restored on removal. |
 | System property | Sets `ro.vendor.camera.res.fmq.size` and adds `com.oplus.camera` to `persist.vendor.camera.privapp.list` (in memory only; LineageOS's camera service applies it only to that package). | `module/system.prop`, `module/service.sh` | The result-queue size affects the camera HAL for all camera apps (larger queue). |
 | Camera service | Not modified since v0.37. Out-of-order frame timestamps in OnePlus multi-frame shots are raised to stay increasing inside the camera HAL process, for OnePlus sessions only (docs/ARCHITECTURE.md). v0.35–v0.36 shipped a fixed copy of the ROM's `cameraserver` that applied to every app. | `tools/oemwrap/oemwrap.c` | Other apps' sessions are not affected. |
-| Native libraries | Ships byte-patched copies of two ROM libraries on `/odm`; the ROM files are never modified. | `module/customize.sh` | Each patch is applied only if the exact original bytes are found once, then verified. |
+| Native libraries | Ships byte-patched copies of a few ROM files on `/odm` (the offline camera service, the camera HW config, and depending on the LineageOS build Qualcomm's offline front end, `libEIS` and private copies of LineageOS's camera layer and its UI library), plus an unmodified copy of the ROM's tintless library where needed; the ROM files are never modified. Also ships the camera app's own OnePlus/ArcSoft libraries on `/odm`, taken from the OxygenOS firmware (LineageOS no longer ships them). | `module/customize.sh` | Each patch is applied only if the exact original bytes are found once, then verified. A copy whose ROM file a LineageOS update changed is remade from the new file at boot with the same checks, or removed if the edit no longer fits (`refresh_fixes`, `module/common.sh`). |
 
 ### Exported components
 
@@ -48,7 +48,7 @@ service abort on internal assertions while debugging. Reboot to return to normal
 
 ## Removal
 
-`module/uninstall.sh` deletes the app's data, crash reports that mention `com.oplus.camera`,
+`module/uninstall.sh` deletes the app's data, crash reports of the camera's own processes,
 debug bundles in `Download/`, and any leftover file under `/data` owned by the camera's old
 UID (only if that UID hasn't been given to another app). Your photos and videos are kept.
 

@@ -14,6 +14,17 @@ case ",$CUR," in
 esac
 
 until [ "$(getprop sys.boot_completed)" = 1 ]; do sleep 2; done
+# Metamodule copy work post-fs-data.sh couldn't do because the copy wasn't mounted yet (common.sh)
+# This boot then runs on outdated module files: the crash watchdogs below would judge those, not
+# the files the next boot mounts, so they sit this boot out.
+STALE=0
+if [ -f "$MODDIR/.sync_mirror" ]; then
+  STALE=1
+  sync_mirror "$MODDIR" && rm -f "$MODDIR/.sync_mirror"
+fi
+if [ ! -f "$MODDIR/.pruned" ]; then
+  prune_mirror "$MODDIR" && touch "$MODDIR/.pruned"
+fi
 # First boot after install: the camera app now exists, so its data folders can be given to it
 # (common.sh; a no-op on later boots, post-fs-data.sh already did it).
 tighten_dirs "$MODDIR"
@@ -42,30 +53,11 @@ precompile &
 # the Action button saves the debug bundle. Runtime-only; gone on the next boot without the file.
 [ -f "$MODDIR/debug" ] && logcat -G 16M >/dev/null 2>&1
 
-# Watchdog for the OFE helper-library fix (customize.sh, fix 3): two camera-HAL crashes running
-# through the fixed loader or libdscaalgo within 10 minutes of boot take the three files out of the
-# module, so the next boot uses the ROM's own loader again (DSCA off, as on LineageOS).
-O="$MODDIR/system/odm/lib64/libcamxofehwl.so"
-ofe_watchdog() {
-  j=0
-  while [ $j -lt 20 ] && [ -f "$O" ]; do
-    sleep 30; j=$((j+1))
-    N=$(logcat -d -b crash 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*/odm/lib64/(libcamxofehwl|libdscaalgo|libcamxtintlessalgo)\.so" | awk '{print $3}' | sort -u | wc -l)
-    if [ "${N:-0}" -ge 2 ]; then
-      rm -f "$O" "$MODDIR/system/odm/lib64/libdscaalgo.so" "$MODDIR/system/odm/lib64/libcamxtintlessalgo.so"
-      echo "$(date) provider_crashes=$N" > "$MODDIR/ofe_dsca_disabled"
-      rm -f "$MODDIR/.pruned"
-      cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los_ofe \
-        "The DSCA library fix made the camera HAL crash, so it has been switched off. Reboot to restore the camera." >/dev/null 2>&1
-    fi
-  done
-}
-[ -f "$O" ] && ofe_watchdog &
-
-# Watchdog for the OnePlus camera layer: if the camera HAL keeps dying after boot, take the layer
-# out of the module so the next boot is back to LineageOS's own camera path, and tell the user.
+# Watchdog for the OnePlus camera layer: if the camera HAL keeps dying after boot, take the wrapper
+# and layer copies out of the module so the next boot uses LineageOS's layer without the wrapper,
+# and tell the user.
 L="$MODDIR/system/odm/lib64/hw/camera.oemlayer.v2.so"
-if [ -f "$L" ]; then
+if [ -f "$L" ] && [ $STALE = 0 ]; then
   # check for 10 minutes after boot (covers the first camera launches), every 30 s. Cheap on
   # purpose: only the small crash buffer is read each time; the large main buffer only when the
   # camera HAL has (re)started and loaded the layer.
@@ -73,14 +65,14 @@ if [ -f "$L" ]; then
   while [ $i -lt 20 ] && [ -f "$L" ]; do
     sleep 30; i=$((i+1))
     # distinct crashed processes whose backtrace runs through the layer or its private libs
-    N=$(logcat -d -b crash 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*(camera\.oemlayer|libsensorbridg2)" | awk '{print $3}' | sort -u | wc -l)
+    N=$(logcat -d -b crash 2>/dev/null | grep -E " F DEBUG +: +#[0-9]+ pc .*camera\.oemlayer" | awk '{print $3}' | sort -u | wc -l)
     P=$(pidof vendor.qti.camera.provider-service_64); BAD=0
     if [ "$P" != "$PP" ]; then
       PP=$P
       BAD=$(logcat -d -b main 2>/dev/null | grep -cE "oemlayer\.v2\.so.*(dlopen failed|cannot locate symbol)")
     fi
     if [ "${N:-0}" -ge 2 ] || [ "${BAD:-0}" -ge 1 ]; then
-      rm -f "$L" "$MODDIR/system/odm/lib64/camera.oemlayer.v2.so" "$MODDIR/system/odm/lib64/libsensorbridg2.so" "$MODDIR/system/odm/lib64/camera.oemlayer.uilaye2.so"
+      drop_files "$MODDIR" $LAYER_FILES   # wrapper and layer copies (common.sh); also off the refresh list
       echo "$(date) provider_crashes=$N load_errors=$BAD" > "$MODDIR/oemlayer_disabled"
       rm -f "$MODDIR/.pruned"   # next boot removes the layer from the metamodule's copy too
       cmd notification post -S bigtext -t "OnePlus Camera module" oplus_camera_los \

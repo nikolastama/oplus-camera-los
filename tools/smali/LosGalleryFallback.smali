@@ -7,9 +7,12 @@
 # the quick preview JPEG; the processed (HDR / multi-frame) image replaces it a moment later,
 # and other galleries keep showing their first (quick) decode until zoomed. So a photo taken in
 # the last minute whose final image is not saved yet is opened as soon as it is (max 8 s wait).
-# All state is touched on the main thread only.
+# All state is touched on the main thread only. The handler is made once, when the class loads;
+# only the 8 s timeout is ever cancelled, so a "final image saved" notice already queued for the
+# main thread is never dropped.
 
-.field private static sHandler:Landroid/os/Handler;
+.field private static final sHandler:Landroid/os/Handler;
+.field private static sTimeout:Ljava/lang/Runnable;
 .field private static sPendingAct:Landroid/app/Activity;
 .field private static sPendingUri:Landroid/net/Uri;
 .field private static sPendingMime:Ljava/lang/String;
@@ -17,24 +20,36 @@
 
 
 .method static constructor <clinit>()V
-    .locals 1
+    .locals 2
     new-instance v0, Ljava/util/HashSet;
     invoke-direct {v0}, Ljava/util/HashSet;-><init>()V
     sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sSaved:Ljava/util/HashSet;
-    return-void
-.end method
-
-.method private static handler()Landroid/os/Handler;
-    .locals 2
-    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
-    if-nez v0, :cond_0
     new-instance v0, Landroid/os/Handler;
     invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
     move-result-object v1
     invoke-direct {v0, v1}, Landroid/os/Handler;-><init>(Landroid/os/Looper;)V
     sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
-    :cond_0
+    return-void
+.end method
+
+.method private static handler()Landroid/os/Handler;
+    .locals 1
+    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
     return-object v0
+.end method
+
+# main thread: cancel the pending 8 s timeout, if any
+.method private static cancelTimeout()V
+    .locals 2
+    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
+    if-eqz v0, :cond_done
+    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
+    move-result-object v1
+    invoke-virtual {v1, v0}, Landroid/os/Handler;->removeCallbacks(Ljava/lang/Runnable;)V
+    const/4 v0, 0x0
+    sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
+    :cond_done
+    return-void
 .end method
 
 .method private static launch(Landroid/app/Activity;Landroid/net/Uri;Ljava/lang/String;)V
@@ -95,9 +110,7 @@
     sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingUri:Landroid/net/Uri;
     sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingAct:Landroid/app/Activity;
     sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingMime:Ljava/lang/String;
-    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
-    move-result-object p0
-    invoke-virtual {p0, v3}, Landroid/os/Handler;->removeCallbacksAndMessages(Ljava/lang/Object;)V
+    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->cancelTimeout()V
     invoke-static {v1, v0, v2}, Lcom/oplus/camera/helper/LosGalleryFallback;->launch(Landroid/app/Activity;Landroid/net/Uri;Ljava/lang/String;)V
     :cond_out
     return-void
@@ -153,12 +166,13 @@
     sput-object p0, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingAct:Landroid/app/Activity;
     sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingUri:Landroid/net/Uri;
     sput-object v1, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingMime:Ljava/lang/String;
+    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->cancelTimeout()V
     invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
     move-result-object v2
     const/4 v3, 0x0
-    invoke-virtual {v2, v3}, Landroid/os/Handler;->removeCallbacksAndMessages(Ljava/lang/Object;)V
     new-instance v4, Lcom/oplus/camera/helper/LosGalleryFallback$Fire;
     invoke-direct {v4, v3}, Lcom/oplus/camera/helper/LosGalleryFallback$Fire;-><init>(Landroid/net/Uri;)V
+    sput-object v4, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
     const-wide/16 v5, 0x1f40
     invoke-virtual {v2, v4, v5, v6}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
     goto :cond_done

@@ -1,34 +1,35 @@
 diff --git a/smali/com/oplus/camera/CameraManager.smali b/smali/com/oplus/camera/CameraManager.smali
-index 3e572bb..9347198 100644
+index 544da221..1cd4a50c 100644
 --- a/smali/com/oplus/camera/CameraManager.smali
 +++ b/smali/com/oplus/camera/CameraManager.smali
-@@ -7234,6 +7234,8 @@
-     .line 275
-     invoke-static {v12, v13}, Lm8/c;->C(Ljava/lang/String;Ljava/util/function/Supplier;)V
+@@ -8947,6 +8947,8 @@
+     .line 281
+     invoke-static {v12, v13}, Ljb/b;->J(Ljava/lang/String;Ljava/util/function/Supplier;)V
  
 +    invoke-static {v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->onFinalSaved(Landroid/net/Uri;)V
 +
-     .line 276
-     .line 277
-     .line 278
+     .line 282
+     .line 283
+     .line 284
 diff --git a/smali_classes12/com/oplus/camera/helper/GalleryHelper.smali b/smali_classes12/com/oplus/camera/helper/GalleryHelper.smali
-index 40c05e4..0188eb5 100644
+index 91297d2f..11a91c31 100644
 --- a/smali_classes12/com/oplus/camera/helper/GalleryHelper.smali
 +++ b/smali_classes12/com/oplus/camera/helper/GalleryHelper.smali
-@@ -2924,6 +2924,10 @@
+@@ -2600,6 +2600,11 @@
  
-     .line 40
-     .line 41
+     if-nez v3, :cond_0
+ 
 +    iget-object v3, v8, Lcom/oplus/camera/helper/GalleryHelper;->a:Landroid/app/Activity;
 +
-+    invoke-static {v3, v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->open(Landroid/app/Activity;Lxm/i;)V
++    invoke-static {v3, v0}, Lcom/oplus/camera/helper/LosGalleryFallback;->open(Landroid/app/Activity;Leq/i;)V
 +
-     return v12
++
+     return v11
  
-     .line 42
+     :cond_0
 diff --git a/smali_classes12/com/oplus/camera/helper/LosGalleryFallback$Fire.smali b/smali_classes12/com/oplus/camera/helper/LosGalleryFallback$Fire.smali
 new file mode 100644
-index 0000000..0e70261
+index 00000000..0e702618
 --- /dev/null
 +++ b/smali_classes12/com/oplus/camera/helper/LosGalleryFallback$Fire.smali
 @@ -0,0 +1,26 @@
@@ -60,10 +61,10 @@ index 0000000..0e70261
 +.end method
 diff --git a/smali_classes12/com/oplus/camera/helper/LosGalleryFallback.smali b/smali_classes12/com/oplus/camera/helper/LosGalleryFallback.smali
 new file mode 100644
-index 0000000..0310281
+index 00000000..9a94baee
 --- /dev/null
 +++ b/smali_classes12/com/oplus/camera/helper/LosGalleryFallback.smali
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,186 @@
 +.class public final Lcom/oplus/camera/helper/LosGalleryFallback;
 +.super Ljava/lang/Object;
 +.source "LosGalleryFallback.java"
@@ -73,9 +74,12 @@ index 0000000..0310281
 +# the quick preview JPEG; the processed (HDR / multi-frame) image replaces it a moment later,
 +# and other galleries keep showing their first (quick) decode until zoomed. So a photo taken in
 +# the last minute whose final image is not saved yet is opened as soon as it is (max 8 s wait).
-+# All state is touched on the main thread only.
++# All state is touched on the main thread only. The handler is made once, when the class loads;
++# only the 8 s timeout is ever cancelled, so a "final image saved" notice already queued for the
++# main thread is never dropped.
 +
-+.field private static sHandler:Landroid/os/Handler;
++.field private static final sHandler:Landroid/os/Handler;
++.field private static sTimeout:Ljava/lang/Runnable;
 +.field private static sPendingAct:Landroid/app/Activity;
 +.field private static sPendingUri:Landroid/net/Uri;
 +.field private static sPendingMime:Ljava/lang/String;
@@ -83,24 +87,36 @@ index 0000000..0310281
 +
 +
 +.method static constructor <clinit>()V
-+    .locals 1
++    .locals 2
 +    new-instance v0, Ljava/util/HashSet;
 +    invoke-direct {v0}, Ljava/util/HashSet;-><init>()V
 +    sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sSaved:Ljava/util/HashSet;
-+    return-void
-+.end method
-+
-+.method private static handler()Landroid/os/Handler;
-+    .locals 2
-+    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
-+    if-nez v0, :cond_0
 +    new-instance v0, Landroid/os/Handler;
 +    invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
 +    move-result-object v1
 +    invoke-direct {v0, v1}, Landroid/os/Handler;-><init>(Landroid/os/Looper;)V
 +    sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
-+    :cond_0
++    return-void
++.end method
++
++.method private static handler()Landroid/os/Handler;
++    .locals 1
++    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sHandler:Landroid/os/Handler;
 +    return-object v0
++.end method
++
++# main thread: cancel the pending 8 s timeout, if any
++.method private static cancelTimeout()V
++    .locals 2
++    sget-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
++    if-eqz v0, :cond_done
++    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
++    move-result-object v1
++    invoke-virtual {v1, v0}, Landroid/os/Handler;->removeCallbacks(Ljava/lang/Runnable;)V
++    const/4 v0, 0x0
++    sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
++    :cond_done
++    return-void
 +.end method
 +
 +.method private static launch(Landroid/app/Activity;Landroid/net/Uri;Ljava/lang/String;)V
@@ -161,9 +177,7 @@ index 0000000..0310281
 +    sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingUri:Landroid/net/Uri;
 +    sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingAct:Landroid/app/Activity;
 +    sput-object v3, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingMime:Ljava/lang/String;
-+    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
-+    move-result-object p0
-+    invoke-virtual {p0, v3}, Landroid/os/Handler;->removeCallbacksAndMessages(Ljava/lang/Object;)V
++    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->cancelTimeout()V
 +    invoke-static {v1, v0, v2}, Lcom/oplus/camera/helper/LosGalleryFallback;->launch(Landroid/app/Activity;Landroid/net/Uri;Ljava/lang/String;)V
 +    :cond_out
 +    return-void
@@ -187,13 +201,13 @@ index 0000000..0310281
 +.end method
 +
 +# main thread, from GalleryHelper when the OnePlus gallery is missing
-+.method public static open(Landroid/app/Activity;Lxm/i;)V
++.method public static open(Landroid/app/Activity;Leq/i;)V
 +    .locals 8
 +    if-eqz p0, :cond_done
 +    if-eqz p1, :cond_done
-+    iget-object v0, p1, Lxm/i;->b:Landroid/net/Uri;
++    iget-object v0, p1, Leq/i;->b:Landroid/net/Uri;
 +    if-eqz v0, :cond_done
-+    iget-object v1, p1, Lxm/i;->c:Ljava/lang/String;
++    iget-object v1, p1, Leq/i;->c:Ljava/lang/String;
 +    if-nez v1, :cond_type
 +    const-string v1, "image/*"
 +    :cond_type
@@ -210,7 +224,7 @@ index 0000000..0310281
 +    if-nez v2, :cond_now
 +    invoke-static {}, Ljava/lang/System;->currentTimeMillis()J
 +    move-result-wide v2
-+    iget-wide v4, p1, Lxm/i;->f:J
++    iget-wide v4, p1, Leq/i;->f:J
 +    sub-long/2addr v2, v4
 +    const-wide/32 v4, 0xea60
 +    cmp-long v6, v2, v4
@@ -219,12 +233,13 @@ index 0000000..0310281
 +    sput-object p0, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingAct:Landroid/app/Activity;
 +    sput-object v0, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingUri:Landroid/net/Uri;
 +    sput-object v1, Lcom/oplus/camera/helper/LosGalleryFallback;->sPendingMime:Ljava/lang/String;
++    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->cancelTimeout()V
 +    invoke-static {}, Lcom/oplus/camera/helper/LosGalleryFallback;->handler()Landroid/os/Handler;
 +    move-result-object v2
 +    const/4 v3, 0x0
-+    invoke-virtual {v2, v3}, Landroid/os/Handler;->removeCallbacksAndMessages(Ljava/lang/Object;)V
 +    new-instance v4, Lcom/oplus/camera/helper/LosGalleryFallback$Fire;
 +    invoke-direct {v4, v3}, Lcom/oplus/camera/helper/LosGalleryFallback$Fire;-><init>(Landroid/net/Uri;)V
++    sput-object v4, Lcom/oplus/camera/helper/LosGalleryFallback;->sTimeout:Ljava/lang/Runnable;
 +    const-wide/16 v5, 0x1f40
 +    invoke-virtual {v2, v4, v5, v6}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
 +    goto :cond_done

@@ -1,8 +1,8 @@
 diff --git a/AndroidManifest.xml b/AndroidManifest.xml
-index cde28d2..d4a1806 100644
+index 30cdfb03..62a1f62b 100644
 --- a/AndroidManifest.xml
 +++ b/AndroidManifest.xml
-@@ -342,7 +342,7 @@
+@@ -373,7 +373,7 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -11,7 +11,7 @@ index cde28d2..d4a1806 100644
              <intent-filter>
                  <action android:name="oplus.intent.action.KEY_MAGIC_MESSENGER"/>
              </intent-filter>
-@@ -457,7 +457,7 @@
+@@ -484,7 +484,7 @@
                  <action android:name="android.service.quicksettings.action.QS_TILE"/>
              </intent-filter>
          </service>
@@ -20,7 +20,7 @@ index cde28d2..d4a1806 100644
              <intent-filter>
                  <action android:name="com.oplus.intent.action.CAMERA_BLUE_TOOTH_SCAN_SERVICE"/>
              </intent-filter>
-@@ -477,7 +477,7 @@
+@@ -504,7 +504,7 @@
          </service>
          <provider android:authorities="com.oplus.camera.sticker.db.provider" android:exported="false" android:name="com.oplus.camera.feature.sticker.provider.StickerProvider"/>
          <service android:exported="false" android:name="com.oplus.camera.feature.sticker.download.thumbnail.ThumbDownloadService"/>
@@ -29,7 +29,7 @@ index cde28d2..d4a1806 100644
          <service android:enabled="true" android:exported="false" android:name="com.oplus.camera.screen.FolderAngleDetectService"/>
          <service android:enabled="false" android:exported="true" android:name="com.oplus.camera.remote.RemoteService" android:permission="com.oplus.camera.remote.service.permission.CAPTURE_PREVIEW">
              <intent-filter>
-@@ -509,15 +509,15 @@
+@@ -538,15 +538,15 @@
              <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_common_file_paths"/>
          </provider>
          <provider android:authorities="com.oplus.camera.gallery.cache.provider" android:exported="true" android:name="com.oplus.camera.component.SandBoxContentProvider" android:permission="com.oplus.camera.sandbox.permission.SANDBOX_PROVIDER"/>
@@ -46,11 +46,11 @@ index cde28d2..d4a1806 100644
 +        <provider android:authorities="com.oplus.camera.gallery.info.provider" android:exported="false" android:name="com.oplus.camera.component.CameraInfoProvider"/>
 +        <provider android:authorities="com.oplus.ai.camera.visibility_attr_provider" android:exported="false" android:grantUriPermissions="true" android:name="com.oplus.camera.setting.AiCameraVisibleProvider"/>
          <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true"/>
-         <uses-library android:name="com.oplus.camera.unit.sdk" android:required="false"/>
-         <provider android:authorities="com.oplus.camera.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="com.oplus.scanengine.router.ShareFileProvider">
-@@ -559,7 +559,7 @@
+         <activity android:configChanges="locale|keyboardHidden|orientation|screenLayout|uiMode|screenSize" android:exported="false" android:launchMode="singleTop" android:name="com.oplus.camera.privacypolicy.CameraPrivacyPolicyActivity" android:screenOrientation="behind" android:theme="@style/CameraPrivacyPolicyTheme">
+             <intent-filter>
+@@ -609,7 +609,7 @@
          <meta-data android:name="com.oplus.support:api-adapter" android:value="13.0.0"/>
-         <meta-data android:name="protocol_version_codes" android:value="207"/>
+         <meta-data android:name="protocol_version_codes" android:value="209"/>
          <meta-data android:name="com.oplus.appplatform:sysapi" android:value="13.0.4"/>
 -        <provider android:authorities="com.oplus.camera.oplus.epona" android:directBootAware="true" android:exported="true" android:multiprocess="true" android:name="com.oplus.epona.internal.EponaProvider"/>
 +        <provider android:authorities="com.oplus.camera.oplus.epona" android:directBootAware="true" android:exported="false" android:multiprocess="true" android:name="com.oplus.epona.internal.EponaProvider"/>

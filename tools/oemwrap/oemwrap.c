@@ -153,6 +153,7 @@ static vendor_tag_ops_t g_vtops; /* filled by the real layer; outlives every use
  * request and passed every frame through as unknown (front-camera face shots hung). */
 #define OP_PROCESS_CAPTURE_REQUEST 5
 #define CB_SLOTS 16    /* camera3_callback_ops: 4 entry points; spare slots forward too */
+#define CB_FIRST_OPTIONAL 4  /* slots 0-3 are the 4 entry points, always forwarded */
 #define REQ_RING 256   /* requests in flight are far fewer than this */
 #define ADJ_RING 16
 typedef struct proxy {
@@ -194,31 +195,45 @@ static int add_pkg(camera_metadata_t *m) {
     return -1;
 }
 
-static void find_pkg_tag(void) {
-    if (g_pkg_tag_state) return;
-    g_pkg_tag_state = -1;
+/* Looks the tag up once. Two cameras can configure at the same time: the second waits for the
+ * first's lookup instead of reading a half-finished state ("not available") and configuring its
+ * OnePlus session without the tag. The result is published only once it is complete. */
+static int g_pkg_lock;
+static int lookup_pkg_tag(uint32_t *out) {
     if (!g_get_vendor_tag_ops) {
         __android_log_print(LOG_E, TAG, "OemLayer::get_vendor_tag_ops not exported");
-        return;
+        return -1;
     }
     const vendor_tag_ops_t *ops = &g_vtops;
     g_get_vendor_tag_ops(&g_vtops);
-    if (!ops->get_tag_count || !ops->get_all_tags || !ops->get_section_name || !ops->get_tag_name) return;
+    if (!ops->get_tag_count || !ops->get_all_tags || !ops->get_section_name || !ops->get_tag_name) return -1;
     int n = ops->get_tag_count(ops);
-    if (n <= 0 || n > 65536) return;
+    if (n <= 0 || n > 65536) return -1;
     static uint32_t tags[65536];
     ops->get_all_tags(ops, tags);
     for (int i = 0; i < n; i++) {
         const char *s = ops->get_section_name(ops, tags[i]);
         const char *t = ops->get_tag_name(ops, tags[i]);
         if (s && t && !strcmp(s, "com.oplus") && !strcmp(t, "packageName")) {
-            g_pkg_tag = tags[i];
-            g_pkg_tag_state = 1;
-            __android_log_print(LOG_I, TAG, "com.oplus.packageName = 0x%x", g_pkg_tag);
-            return;
+            *out = tags[i];
+            __android_log_print(LOG_I, TAG, "com.oplus.packageName = 0x%x", tags[i]);
+            return 1;
         }
     }
     __android_log_print(LOG_E, TAG, "vendor tag com.oplus.packageName not found");
+    return -1;
+}
+
+static void find_pkg_tag(void) {
+    if (__atomic_load_n(&g_pkg_tag_state, __ATOMIC_ACQUIRE)) return;
+    while (__atomic_exchange_n(&g_pkg_lock, 1, __ATOMIC_ACQUIRE)) CPU_RELAX();
+    if (!__atomic_load_n(&g_pkg_tag_state, __ATOMIC_ACQUIRE)) {
+        uint32_t tag = 0;
+        int state = lookup_pkg_tag(&tag);
+        g_pkg_tag = tag;
+        __atomic_store_n(&g_pkg_tag_state, state, __ATOMIC_RELEASE);
+    }
+    __atomic_store_n(&g_pkg_lock, 0, __ATOMIC_RELEASE);
 }
 
 /* Spectra camera3_stream_t as the CamX provider builds it (offsets confirmed against the CHI
@@ -338,7 +353,8 @@ static int oem_configure(proxy_t *p, camera3_stream_configuration_t *cfg) {
 /* ---------------------------------------------------------------- per-session routing proxy */
 
 /* Forward slot i to the current backend with the backend as the device argument; every argument
- * register and the stack are left untouched. A slot the backend leaves NULL returns -ENOSYS. */
+ * register and the stack are left untouched. A slot the backend leaves NULL, or a device left
+ * without a backend (switch_backend could reopen neither side), returns -ENOSYS. */
 #ifdef OEMWRAP_HOST_TEST
 #define TRAMP(i) static void tramp_##i(void) {}
 #else
@@ -346,6 +362,7 @@ static int oem_configure(proxy_t *p, camera3_stream_configuration_t *cfg) {
     __attribute__((naked)) static void tramp_##i(void) { \
         __asm__ volatile("hint #34\n"                 /* bti c */ \
                          "ldr x16, [x0, #136]\n"      /* proxy->backend */ \
+                         "cbz x16, 1f\n"              /* none (both reopens failed) */ \
                          "ldr x17, [x16, #120]\n"     /* backend->ops */ \
                          "ldr x17, [x17, #" #i "*8]\n" \
                          "cbz x17, 1f\n" \
@@ -452,7 +469,7 @@ static void adopt_backend(proxy_t *p, camera3_device_t *b, int oem) {
 #define MSG_FRAME(m)      (*(const uint32_t *)((const char *)(m) + 0x08))
 #define MSG_TS(m)         (*(uint64_t *)((char *)(m) + 0x10))
 #define MSG_READOUT(m)    (*(uint64_t *)((char *)(m) + 0x18))
-#define MSG_SIZE          0x20
+#define MSG_SIZE          0x28    /* sizeof(camera3_notify_msg_t): int type + 32-byte union */
 #define REQ_FRAME(r)      (*(const uint32_t *)((const char *)(r) + 0x00))
 #define REQ_SETTINGS(r)   (*(const camera_metadata_t *const *)((const char *)(r) + 0x08))
 #define REQ_INPUT(r)      (*(const void *const *)((const char *)(r) + 0x10))
@@ -479,7 +496,9 @@ static int tsfix_enabled(void) {
 /* process_capture_request (QTI slot 5): note which frames the camera service exempts */
 static int proxy_request(const struct camera3_device *dev, void *req) {
     proxy_t *p = (proxy_t *)dev;
+    if (!p->backend) return -19;   /* no backend: switch_backend could reopen neither side */
     int (*real)(const struct camera3_device *, void *) = ((void **)p->backend->ops)[OP_PROCESS_CAPTURE_REQUEST];
+    if (!real) return -38;
     if (p->is_oem && p->tsfix && req) {
         const camera_metadata_t *set = REQ_SETTINGS(req);
         uint8_t v;
@@ -507,6 +526,11 @@ static void cb_notify(const void *cb, const void *msg) {
     int known = p->req[f % REQ_RING].valid && p->req[f % REQ_RING].frame == f;
     int exempt = known && p->req[f % REQ_RING].exempt;
     if (known) p->req[f % REQ_RING].valid = 0;
+    /* The camera service remembers the timestamp of every buffer it gets back, exempt frames
+     * included, and checks the next one against it. Exempt and unknown frames therefore move
+     * last_ts forward too (never back: raising a frame more than needed is harmless), so a frame
+     * after a newer ZSL/reprocess frame is still raised past it. */
+    if ((!known || exempt) && ts > p->last_ts) p->last_ts = ts;
     if (known && !exempt && ts != 0) {
         if (p->last_ts && ts <= p->last_ts) {
             prev = p->last_ts;
@@ -582,14 +606,22 @@ CBTRAMP(10) CBTRAMP(11) CBTRAMP(12) CBTRAMP(13) CBTRAMP(14) CBTRAMP(15)
  * provider's own for Qualcomm's HAL, so other apps' sessions are untouched. */
 static const void *cb_for(proxy_t *p, int oem) {
     if (!oem || !p->tsfix || !p->cb) return p->cb;
+    static void (*const tr[CB_SLOTS])(void) = {
+        0, 0, cbtramp_2, cbtramp_3, cbtramp_4, cbtramp_5, cbtramp_6, cbtramp_7, cbtramp_8,
+        cbtramp_9, cbtramp_10, cbtramp_11, cbtramp_12, cbtramp_13, cbtramp_14, cbtramp_15};
     void **o = p->cbw.ops;
+    void *const *prov = (void *const *)p->cb;
     o[0] = (void *)cb_result;
     o[1] = (void *)cb_notify;
-    o[2] = (void *)cbtramp_2;   o[3] = (void *)cbtramp_3;   o[4] = (void *)cbtramp_4;
-    o[5] = (void *)cbtramp_5;   o[6] = (void *)cbtramp_6;   o[7] = (void *)cbtramp_7;
-    o[8] = (void *)cbtramp_8;   o[9] = (void *)cbtramp_9;   o[10] = (void *)cbtramp_10;
-    o[11] = (void *)cbtramp_11; o[12] = (void *)cbtramp_12; o[13] = (void *)cbtramp_13;
-    o[14] = (void *)cbtramp_14; o[15] = (void *)cbtramp_15;
+    /* request_stream_buffers and return_stream_buffers (slots 2 and 3) always forward: the
+     * provider fills them in only after initialize(), once the session's HAL buffer management is
+     * set up, and the HAL calls them through the layer's own callback ops, which always have them.
+     * The trampoline reads the provider's entry at call time, as the stock path does. (Copying
+     * their NULL from initialize() time crashed the provider in HALDevice::RequestStreamBuffers
+     * at the first preview.) Any other slot the provider leaves NULL stays NULL, so the layer's
+     * own "is this callback implemented?" checks see what the provider offers (as for device ops
+     * in wrap_open). */
+    for (int i = 2; i < CB_SLOTS; i++) o[i] = (i < CB_FIRST_OPTIONAL || prov[i]) ? (void *)tr[i] : 0;
     p->cbw.orig = p->cb;
     return &p->cbw;
 }
@@ -599,6 +631,7 @@ static int proxy_initialize(const struct camera3_device *dev, const void *cb) {
     p->cb = cb;
     p->initialized = 1;
     p->tsfix = tsfix_enabled();
+    if (!p->backend) return -19;
     return p->backend->ops->initialize(p->backend, cb_for(p, p->is_oem));
 }
 

@@ -1,15 +1,15 @@
-diff --git a/smali/t7/n3.smali b/smali/t7/n3.smali
-index d4976cd..388c510 100644
---- a/smali/t7/n3.smali
-+++ b/smali/t7/n3.smali
-@@ -263,300 +263,11 @@
+diff --git a/smali/qa/x3.smali b/smali/qa/x3.smali
+index 06c4c7d0..64171590 100644
+--- a/smali/qa/x3.smali
++++ b/smali/qa/x3.smali
+@@ -269,300 +269,11 @@
  .end method
  
  .method public static a(Landroid/content/Context;)Landroid/graphics/Typeface;
 -    .locals 6
 -
 -    .line 1
--    sget-object v0, Lt7/j0;->a:Landroid/graphics/Typeface;
+-    sget-object v0, Lqa/n0;->a:Landroid/graphics/Typeface;
 -
 -    .line 2
 -    .line 3
@@ -110,7 +110,7 @@ index d4976cd..388c510 100644
 -    .line 48
 -    .line 49
 -    :try_start_1
--    sget-boolean v3, Lt7/n3;->q:Z
+-    sget-boolean v3, Lqa/x3;->r:Z
 -
 -    .line 50
 -    .line 51
@@ -191,7 +191,7 @@ index d4976cd..388c510 100644
 -
 -    .line 87
 -    :cond_0
--    sget-boolean p0, Lt7/n3;->q:Z
+-    sget-boolean p0, Lqa/x3;->r:Z
 -
 -    .line 88
 -    .line 89
@@ -237,7 +237,7 @@ index d4976cd..388c510 100644
 -
 -    .line 106
 -    .line 107
--    invoke-static {v0, v1, p0}, Lm8/c;->i(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+-    invoke-static {v0, v1, p0}, Ljb/b;->k(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
 -    :try_end_2
 -    .catch Ljava/lang/NoSuchFieldError; {:try_start_2 .. :try_end_2} :catch_0
 -    .catch Ljava/lang/NoSuchMethodError; {:try_start_2 .. :try_end_2} :catch_0
@@ -283,20 +283,20 @@ index d4976cd..388c510 100644
 -    move-result-object p0
 -
 -    .line 129
--    invoke-static {v0, p0}, Lm8/c;->h(Ljava/lang/String;Ljava/lang/String;)V
+-    invoke-static {v0, p0}, Ljb/b;->j(Ljava/lang/String;Ljava/lang/String;)V
 -
 -    .line 130
 -    .line 131
 -    .line 132
 -    :cond_1
 -    :goto_2
--    sput-object v2, Lt7/j0;->a:Landroid/graphics/Typeface;
+-    sput-object v2, Lqa/n0;->a:Landroid/graphics/Typeface;
 +    .locals 1
  
 -    .line 133
 -    .line 134
 -    :cond_2
--    sget-object p0, Lt7/j0;->a:Landroid/graphics/Typeface;
+-    sget-object p0, Lqa/n0;->a:Landroid/graphics/Typeface;
 +    sget-object v0, Landroid/graphics/Typeface;->DEFAULT:Landroid/graphics/Typeface;
  
 -    .line 135

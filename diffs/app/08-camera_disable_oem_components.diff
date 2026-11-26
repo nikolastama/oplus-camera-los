@@ -1,8 +1,8 @@
 diff --git a/AndroidManifest.xml b/AndroidManifest.xml
-index eff3a40..cde28d2 100644
+index 121696c8..30cdfb03 100644
 --- a/AndroidManifest.xml
 +++ b/AndroidManifest.xml
-@@ -197,17 +197,17 @@
+@@ -217,17 +217,17 @@
          </activity>
          <meta-data android:name="com.oplus.ocs.oaf.AUTH_CODE" android:value="ATBFAiEAlI0PR7tQY2lsimkF/Sl83V1obizR4o5u5B9c8DiWlTcCIA9TYoWYW1yG39y6Yi2bO0j2pu76dcB+1M18jtY+qbiYakN5kmAAAAA="/>
          <meta-data android:name="AccessoryServicesLocation" android:value="/res/xml/accessoryservices.xml"/>
@@ -23,7 +23,7 @@ index eff3a40..cde28d2 100644
              <intent-filter>
                  <action android:name="com.heytap.accessory.streamconnection"/>
              </intent-filter>
-@@ -400,7 +400,7 @@
+@@ -432,7 +432,7 @@
                  <action android:name="android.intent.action.CAMERA_BUTTON"/>
              </intent-filter>
          </receiver>
@@ -32,7 +32,7 @@ index eff3a40..cde28d2 100644
              <intent-filter>
                  <action android:name="com.oplusos.sau.DATARES_UPDATE"/>
              </intent-filter>
-@@ -442,7 +442,7 @@
+@@ -469,7 +469,7 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -41,7 +41,7 @@ index eff3a40..cde28d2 100644
              <intent-filter>
                  <action android:name="com.oplus.engineermode.EngineerModeMain"/>
              </intent-filter>
-@@ -470,7 +470,7 @@
+@@ -497,7 +497,7 @@
                  <category android:name="android.intent.category.DEFAULT"/>
              </intent-filter>
          </activity>
@@ -50,7 +50,7 @@ index eff3a40..cde28d2 100644
              <intent-filter>
                  <action android:name="com.oplus.ai.master.watermark.aidl"/>
              </intent-filter>
-@@ -479,15 +479,15 @@
+@@ -506,15 +506,15 @@
          <service android:exported="false" android:name="com.oplus.camera.feature.sticker.download.thumbnail.ThumbDownloadService"/>
          <provider android:authorities="com.oplus.camera.aicloudhdprovider" android:exported="true" android:name="com.oplus.camera.feature.aicloudhd.provider.AiCloudHdProvider"/>
          <service android:enabled="true" android:exported="false" android:name="com.oplus.camera.screen.FolderAngleDetectService"/>

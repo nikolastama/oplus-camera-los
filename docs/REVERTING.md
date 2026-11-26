@@ -5,26 +5,24 @@ Every modification and every debloat step this module makes is listed here, with
 Three ways to revert:
 
 1. **Leave a change out of a build.** `python3 tools/build_module.py --list-patches` lists every name, then:
-   - `--skip <name>` drops a smali patch, `apsclient_force_java_heif`, or a native edit id (repeatable);
+   - `--skip <name>` drops a smali patch, `apsclient_force_java_heif`, or `app_blobs` (repeatable);
    - `--enable-component <class>` keeps one of the disabled app components enabled (repeatable).
 
-   Example: `--skip camera_drop_embedded_libs --skip layer-zoom-follow-app --enable-component com.oplus.camera.remote.RemoteService`.
+   Example: `--skip camera_drop_embedded_libs --enable-component com.oplus.camera.remote.RemoteService`.
 2. **Read or reverse-apply the exact diff.** `diffs/` holds one unified diff per patch, recorded against a fresh apktool decode of the stock file. `git apply -R` reverses one inside a decoded tree.
 3. **Use the stock file.** The checksums below identify the untouched originals in the firmware dump.
 
-## Stock originals (OxygenOS CPH2745_16.0.10.601 EX01)
+## Stock originals (ColorOS CPH2745_17.0.1.201(EX01), 11.C.80)
 
 | File in the firmware dump | sha256 |
 |---|---|
-| `my_product/app/OplusCamera/OplusCamera.apk` | `90887340c132c731d251d74c04f18bf37d7276fb142dc4fa23f4ad3b98fdde9a` |
-| `my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar` | `1d5774ba708cb02768ea199f45397ef0b47000c1471ddabf77e9bb14c3080e36` |
-| `my_product/product_overlay/framework/com.oplus.camera.unit.sdk.adapter.jar` | `9982987fae9e3f583a02992608330c1fdc646b2c20805282fbd63f421dff4b32` |
-| `my_product/lib64/libAPSClient-cmd-jni.so` | `b6669463a2dbdc22d20d0bb1a565ef9f1cc058f5f34c627a8d49971f7c509bec` |
-| `odm/lib64/hw/camera.oemlayer.v2.so` | `73177634d1353d29222883570a6864b07d7e0915067d9e5646b9eaceffcfe3d9` |
-| `odm/lib64/camera.oemlayer.uilayer.so` | `50fc6b6f61693e2de4c718c33f674cb29cc9a2eea8b29d966f3011a4306c28e6` |
-| `odm/lib64/libsensorbridge.so` | `cc8267ce357aecbe60f8981720d791e3932d441cfc1e5c82ae6169cdeefe92e0` |
+| `my_product/app/OplusCamera/OplusCamera.apk` (7.006.295) | `5d69459b7b2b15fbe7ea3b1912e16bbb0041ef24ce5b3f064bf9d3aba535e4da` |
+| `my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar` | `e1354cb85f6157cf5f094c2617f2e87c2936c5b4f5f40758581fb8878b276215` |
+| `my_product/product_overlay/framework/com.oplus.camera.unit.sdk.adapter.jar` | `c33f3a63a868ef632b4a403a669b2b00f2bf7c711c00293edd1f33f6e430ddd3` |
+| `my_product/lib64/libAPSClient-cmd-jni.so` | `559cd5e9fc533cbce3cc3390cecad74127167daaf3e964e0cec424fcbc3eff9c` |
+| `odm/lib64/libAlgoProcess.so` | `57ed7dcdc53e910753c87046a3270d9d6e00ae46a70114c5cc2ae8327c31de88` |
 
-Byte-level originals of every native edit are stored in `tools/binpatches.json` (`orig`), in `tools/patches.py` (`APS_TARGETS`, `APS_STOCK`) and in `module/customize.sh` (the `fixlib` calls).
+Byte-level originals of every native edit are stored in `tools/patches.py` (`APS_TARGETS`, `APS_STOCK`), `tools/app_blobs.py` (`BYTE_EDITS`) and in `module/customize.sh` / `module/common.sh` (the `fixlib` calls, `LAYER_FIX_*`, `UILAYER_FIX_*`, `EIS_FIX_*`). LineageOS's own layer is never modified; the module edits private copies.
 
 ## 1. Camera app (`OplusCamera.apk`)
 
@@ -35,19 +33,18 @@ Byte-level originals of every native edit are stored in `tools/binpatches.json` 
 | 3 | `camera_uifirst` | `diffs/app/03-…` | Calls a method LineageOS's `OplusUIFirstManager` lacks (`NoSuchMethodError`). |
 | 4 | `strip_oem_component_permissions` | `diffs/app/04-…` | Components guarded by undefined OnePlus permissions again; the launcher can't start them. |
 | 5 | `vendor_tag_aliases` (also SDK + adapter) | `diffs/app/05-…` | App asks for vendor tags under names the HAL doesn't expose. |
-| 6 | `camera_blur_license_path` | `diffs/app/06-…` | Portrait blur looks for its license on `/odm` (absent). |
-| 7 | `camera_defer_ufs_probe` | `diffs/app/07-…` | Deferred capture reads `/proc/devinfo/ufs` (EACCES → crash). |
-| 8 | `camera_gallery_fallback` | `diffs/app/08-…` (adds `tools/smali/LosGalleryFallback*.smali`) | Thumbnail opens nothing without OnePlus Gallery. |
-| 9 | `camera_disable_oem_components` | `diffs/app/09-…` | Re-enables the components below (use `--enable-component` for single ones). |
-| 10 | `restrict_exported_components` | `diffs/app/10-…` | `EponaProvider` and six more components are reachable by any app again (`android:exported="true"` without a permission). |
-| 11 | `camera_no_telemetry` | `diffs/app/11-…` | OPPO's usage statistics (OplusTrack) run again: events built on the report thread and sent to a statistics provider LineageOS doesn't have, plus OplusTrack's crash-report handler. |
-| 12 | `camera_hide_dead_settings` | `diffs/app/12-…` | Shows Quick launch (both entries), the privacy policy link and the user agreement again (`DEAD_SETTINGS` in `tools/patches.py`; on LineageOS they do nothing or fail). |
-| 13 | `camera_scoped_props` | `diffs/app/13-…` (adds `tools/smali-stubs/LosProps.smali` via the stubs jar, `diffs/stubs/`) | The app's two reflective `anim_level` reads go to the real system property (unset on LineageOS). |
-| 14 | `camera_drop_embedded_libs` (debloat) | `diffs/app/14-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 39 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
+| 6 | `camera_defer_ufs_probe` | `diffs/app/06-…` | Deferred capture reads `/proc/devinfo/ufs` (EACCES → crash). |
+| 7 | `camera_gallery_fallback` | `diffs/app/07-…` (adds `tools/smali/LosGalleryFallback*.smali`) | Thumbnail opens nothing without OnePlus Gallery. |
+| 8 | `camera_disable_oem_components` | `diffs/app/08-…` | Re-enables the components below (use `--enable-component` for single ones). |
+| 9 | `restrict_exported_components` | `diffs/app/09-…` | `EponaProvider` and six more components are reachable by any app again (`android:exported="true"` without a permission). |
+| 10 | `camera_no_telemetry` | `diffs/app/10-…` | OPPO's usage statistics (OplusTrack) run again: events built on the report thread and sent to a statistics provider LineageOS doesn't have, plus OplusTrack's crash-report handler. |
+| 11 | `camera_hide_dead_settings` | `diffs/app/11-…` | Shows Quick launch (both entries), the privacy policy link and the user agreement again (`DEAD_SETTINGS` in `tools/patches.py`; on LineageOS they do nothing or fail). |
+| 12 | `camera_scoped_props` | `diffs/app/12-…` (adds `tools/smali-stubs/LosProps.smali` via the stubs jar, `diffs/stubs/`) | The app's three reflective `anim_level` reads (COUI helpers) go to the real system property (unset on LineageOS). |
+| 13 | `camera_drop_embedded_libs` (debloat) | `diffs/app/13-camera_drop_embedded_libs.txt` (name, size and sha256 of each removed library) | Keeps the 37 native libraries inside the APK too (+46 MB). No functional change: the same files ship in `priv-app/OplusCamera/lib/arm64`. |
 
 ### Components disabled (debloat), `tools/patches.py: OEM_ONLY_COMPONENTS`
 
-| Component | Purpose on OxygenOS |
+| Component | Purpose on ColorOS |
 |---|---|
 | `com.heytap.accessory.platform.RegisterUponInstallReceiver` | HeyTap/OPPO wearable accessory framework |
 | `com.heytap.accessory.platform.ServiceConnectionIndicationReceiver` | same |
@@ -66,30 +63,22 @@ Disabling only stops the system from starting them. The app's own code still run
 | Patch | Diff |
 |---|---|
 | `sdk_runtime` | `diffs/sdk/01-sdk_runtime.diff` |
-| `sdk_facebeauty_path` | `diffs/sdk/02-sdk_facebeauty_path.diff` |
+| `sdk_facebeauty_path` | `diffs/sdk/02-sdk_facebeauty_path.diff`, `diffs/sdk-adapter/01-sdk_facebeauty_path.diff` |
 | `sdk_session_package_tag` | `diffs/sdk/03-sdk_session_package_tag.diff` |
-| `vendor_tag_aliases` | `diffs/sdk/04-vendor_tag_aliases.diff`, `diffs/sdk-adapter/01-vendor_tag_aliases.diff` |
+| `vendor_tag_aliases` | `diffs/sdk/04-vendor_tag_aliases.diff`, `diffs/sdk-adapter/02-vendor_tag_aliases.diff` |
 
 ## 3. Native libraries
 
 | `--skip` id | File | Original → new | Note |
 |---|---|---|---|
 | `apsclient_force_java_heif` | `libAPSClient-cmd-jni.so` | two dlopen names `lib…` → `xib…` | stock hash in `patches.py` |
-| `layer-needed-sensorbridg2` | `camera.oemlayer.v2.so` | `libsensorbridge.so` → `libsensorbridg2.so` | revert together with `sensorbridge-soname`, and ship nothing as `libsensorbridg2.so` |
-| `layer-needed-charger-v9` | `camera.oemlayer.v2.so` | charger `V8` → `V9` | needed while LineageOS ships only V9 |
-| `layer-needed-uilaye2` | `camera.oemlayer.v2.so` | `camera.oemlayer.uilayer.so` → `uilaye2` | revert together with `uilayer-soname` |
-| `layer-zoom-follow-app` | `camera.oemlayer.v2.so` @0x35fe28 | `291d41b9` → `e9031f2a` | without it the viewfinder ignores zoom |
-| `uilayer-needed-charger-v9` | `camera.oemlayer.uilaye2.so` | `V8` → `V9` | |
-| `uilayer-soname` | `camera.oemlayer.uilaye2.so` | SONAME rename | |
-| `uilayer-dlopen-real-layer` | `camera.oemlayer.uilaye2.so` | `/odm/lib64/hw/camera.oemlayer.v2.so` → `camera.oemlayer.v2.so` | only valid together with the wrapper layout |
-| `uilayer-packagename-fallback` | `camera.oemlayer.uilaye2.so` @0x33ca0 (148 B) | inverted branch + fallback code | the SDK and wrapper also add the tag |
-| `sensorbridge-soname` | `libsensorbridg2.so` | SONAME rename | |
+| `app_blobs` | the camera app's own files (`tools/app_blobs.py`) | `libAlgoProcess` P010 fix, DT_NEEDED V5 → V7, unversioned `AHardwareBuffer_*` imports | `--skip app_blobs` ships none of the app's files (the app then needs a LineageOS build that still has them) |
 
-The module ships the two renamed libraries **as private copies** because LineageOS's `libsensorbridge.so` and `camera.oemlayer.uilayer.so` are different, incompatible builds. Reverting the renames means the layer links against LineageOS's versions.
+**OnePlus camera layer** (LineageOS's): the installer makes private copies with four edits (`LAYER_FIX_*`, `UILAYER_FIX_*` in `module/common.sh`); to run LineageOS's layer as is, without the wrapper, delete `/data/adb/modules/oplus_camera_los/system/odm/lib64/hw/camera.oemlayer.v2.so` and reboot.
 
 **Wrapper behaviour** (`tools/oemwrap/oemwrap.c`): to drop the encoder buffer cap, set `ENCODER_MAX_BUFFERS` to 64 (or remove the call in `configure_and_cap`) and rebuild with `tools/oemwrap/build.sh`. The package tag and the metadata-stream use case are separate functions (`wrap_configure`, `tag_meta_streams`).
 
-**Wrapper** (`prebuilt/camera.oemlayer.wrap.so` at `/odm/lib64/hw/camera.oemlayer.v2.so`): to go without it, ship the real layer at the hw path instead and skip `uilayer-dlopen-real-layer`. Photos then depend only on the SDK's session tag.
+**Wrapper** (`prebuilt/camera.oemlayer.wrap.so` at `/odm/lib64/hw/camera.oemlayer.v2.so`): to go without it, see above. Photos then depend only on the SDK's session tag.
 
 ## 4. Install-time fixes of ROM files (`module/customize.sh`)
 
@@ -97,9 +86,8 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 
 | Label | ROM file | Original → fixed bytes |
 |---|---|---|
-| Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `981a40f9e2031faa1b1f40b9000f40b9` → `…1b2f40b9…` |
-| Camera processing library | `/odm/lib64/libAlgoProcess.so` | see the two hex strings at the `fixlib` call |
-| OFE helper libraries (DSCA) | `/vendor/lib64/libcamxofehwl.so` (copy at `/odm/lib64`, plus a copy of the ROM's `libcamxtintlessalgo.so` and OxygenOS's `libdscaalgo.so` there) | `%s%s%s.%s\0/vendor/lib64\0` → `…/odm/lib64\0\0\0\0` at 0x31657. To go without it, comment out the `fixlib` call and `ofe_helpers` and drop `vendor/lib64/libdscaalgo.so` from `EXTRA_COPIES`. On the phone: delete `/data/adb/modules/oplus_camera_los/system/odm/lib64/libcamxofehwl.so` and reboot. |
+| Offline camera service | `/vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so` (copy at `/odm/lib64`) | `a88355f8151d40b9bf020071` → `a88355f8152d40b9bf020071` (ColorOS 11.C.80) |
+| libEIS SnapAlloc format | `/odm/lib64/libEIS.so` (overlaid) | five `ldr w4,[xN,#0x2c]` → `#0x34` (`EIS_FIX_*`). On the phone: delete `/data/adb/modules/oplus_camera_los/system/odm/lib64/libEIS.so` and reboot. |
 | Camera face detection (FDManager) | `/odm/etc/camera/CameraHWConfiguration.config` (overlaid) | `fdSupport = FALSE;` → `fdSupport = TRUE;\n`. Comment out the `fixlib` call to keep LineageOS's setting (face detection off for every app). On the phone: delete `/data/adb/modules/oplus_camera_los/system/odm/etc/camera/CameraHWConfiguration.config` and reboot. |
 
 ## 4b. Isolation (v0.32)
@@ -120,7 +108,6 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 | OplusTrack statistics off (`camera_no_telemetry`, section 1) | `--skip camera_no_telemetry` |
 | One-time precompile after boot (`precompile` in `service.sh`) | delete the `precompile` function and its call; `cmd package compile --reset com.oplus.camera` drops the compiled code |
 | Self-test on the Action button (`selftest.sh`) | delete `module/selftest.sh` (the button then always saves the debug bundle) |
-| Layer byte edits located by context window (`find`/`at` in `binpatches.json`) | remove the two keys; edits are then only applied at their recorded offsets |
 | `privapp.list` set before boot completes instead of after | move the block below the `sys.boot_completed` wait in `service.sh` |
 
 ## 5. System-level settings (module scripts)
@@ -133,18 +120,19 @@ These patch a copy of the user's own ROM file; the ROM file itself is never modi
 | `service.sh` | `logcat -G 16M`, only when `$MODDIR/debug` exists (since v0.32) | smaller log history in debug bundles |
 | `service.sh` | layer watchdog | no automatic fallback if the layer crashes the HAL |
 | `sepolicy.rule` | each rule is commented with its reason | the matching denial returns |
+| `post-mount.sh` | mounts the camera app's own files (`blobs.img`) over `/odm/lib64` and `/odm/etc/camera` | the app's processing libraries and models are missing: no HDR/portrait/night processing |
 | `post-fs-data.sh` | creates `camera_rus` dirs, relabels `cam_alog`, `camera_process`, `camera_remote_dump` (originals saved in `.relabeled`) | the app can't write its processing/log data |
 
 ## 6. Not shipped on purpose
 
 - `vendor.oplus.hardware.cameraextension-V1-ndk.so`, `cameraextension@1.0.so`, `sendextcamcmd-V2-ndk.so` (in `selection.json`, skipped via `SKIP`): LineageOS provides these interfaces itself.
-- `libdscaalgo.so`: the HAL loads it by an absolute `/vendor` path. Shipping it would mean overlaying `/vendor`, which breaks GPU apps (ARCHITECTURE.md).
 - Any file under `/vendor`, from v0.24 on.
 
 ## 7. Removed from earlier versions
 
 | Version | Removed | Why |
 |---|---|---|
+| v0.39 | the module's own OxygenOS layer (`tools/binpatches.json`, `libsensorbridg2`), the OFE/DSCA fix (`libcamxofehwl`, `libdscaalgo`), `camera_blur_license_path` | the module now requires LineageOS's ColorOS-blob builds, which ship the layer and `libdscaalgo`; the blur license is an app file |
 | v0.28 | `allow zygote vendor_file dir { … }` (added in v0.27) | it cleared the denial but not the browser problem; the real fix was removing the `/vendor` overlay |
 | v0.24 | all `system/vendor/*` files (moved to `/odm`) | `/vendor` overlay broke GPU apps |
 | v0.24 | `ro.vendor.camera.res.fmq.size=1` (v0.23) | binder overflows and stalls; replaced by 8 MB |

@@ -1,9 +1,9 @@
-diff --git a/smali/n8/o.smali b/smali/n8/o.smali
-index a751e8b..23a4d5a 100644
---- a/smali/n8/o.smali
-+++ b/smali/n8/o.smali
-@@ -2648,7 +2648,7 @@
-     .line 29
+diff --git a/smali/kb/s.smali b/smali/kb/s.smali
+index efb82565..545f2242 100644
+--- a/smali/kb/s.smali
++++ b/smali/kb/s.smali
+@@ -2869,7 +2869,7 @@
+     .line 32
      new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
  
 -    const-string v1, "com.oplus.rear.remosaic.enable"
@@ -11,35 +11,35 @@ index a751e8b..23a4d5a 100644
  
      invoke-direct {v0, v1, v2}, Landroid/hardware/camera2/CaptureRequest$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
  
-@@ -3001,7 +3001,7 @@
-     .line 68
+@@ -3222,7 +3222,7 @@
+     .line 71
      new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
  
--    const-string v9, "com.oplus.sensor.exposureTime"
-+    const-string v9, "android.sensor.exposureTime"
+-    const-string v10, "com.oplus.sensor.exposureTime"
++    const-string v10, "android.sensor.exposureTime"
  
-     const-class v12, Ljava/lang/Long;
+     const-class v13, Ljava/lang/Long;
  
-@@ -3466,7 +3466,7 @@
-     .line 119
+@@ -3737,7 +3737,7 @@
+     .line 128
      new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
  
--    const-string v15, "com.oplus.pdaf.converge.status"
-+    const-string v15, "com.oplus.is.pdaf.done"
+-    const-string v11, "com.oplus.pdaf.converge.status"
++    const-string v11, "com.oplus.is.pdaf.done"
  
-     invoke-direct {v0, v15, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+     invoke-direct {v0, v11, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
  
-@@ -3595,7 +3595,7 @@
-     .line 134
+@@ -3866,7 +3866,7 @@
+     .line 143
      new-instance v0, Landroid/hardware/camera2/CaptureResult$Key;
  
--    const-string v10, "com.oplus.control.face.dr"
-+    const-string v10, "com.oplus.face.occlusion.info"
+-    const-string v11, "com.oplus.control.face.dr"
++    const-string v11, "com.oplus.face.occlusion.info"
  
-     invoke-direct {v0, v10, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
+     invoke-direct {v0, v11, v3}, Landroid/hardware/camera2/CaptureResult$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
  
-@@ -4374,7 +4374,7 @@
-     .line 223
+@@ -4762,7 +4762,7 @@
+     .line 245
      new-instance v0, Landroid/hardware/camera2/CaptureRequest$Key;
  
 -    const-string v8, "com.oplus.burst.capture.single"
@@ -48,10 +48,10 @@ index a751e8b..23a4d5a 100644
      invoke-direct {v0, v8, v3}, Landroid/hardware/camera2/CaptureRequest$Key;-><init>(Ljava/lang/String;Ljava/lang/Class;)V
  
 diff --git a/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali b/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
-index a202a8c..fd23dc7 100644
+index a4b88749..e1f68f8d 100644
 --- a/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
 +++ b/smali_classes23/com/oplus/ocs/camera/CameraParameter.smali
-@@ -6354,7 +6354,7 @@
+@@ -6464,7 +6464,7 @@
      .line 6
      new-instance v0, Lcom/oplus/ocs/camera/CameraParameter$ConfigureKey;
  

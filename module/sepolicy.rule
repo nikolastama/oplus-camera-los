@@ -16,8 +16,8 @@ typeattribute oplus_camera_rus_file data_file_type
 typeattribute oplus_camera_rus_file core_data_file_type
 allow priv_app_36 oplus_camera_rus_file dir { read write create getattr setattr rename open add_name remove_name search rmdir }
 allow priv_app_36 oplus_camera_rus_file file { read write create getattr setattr append unlink rename open map }
-allow cameraserver oplus_camera_rus_file dir { read open search getattr }
-allow cameraserver oplus_camera_rus_file file { read getattr setattr open }
+# (No cameraserver rules here, unlike Infinity X's policy. Only its modified camera service
+# read this folder; LineageOS's doesn't, and the folder belongs to the camera app since v0.37.)
 
 # --- vendor camera HAL: binder both ways, offline processing service, properties
 allow priv_app_36 hal_camera_default binder { call transfer }
@@ -66,7 +66,7 @@ typeattribute oplus_camera_rus_file mlstrustedobject
 typeattribute vendor_camera_data_file mlstrustedobject
 
 # --- OnePlus algorithm libraries on /odm and /vendor (libAlgoProcess, libalog and their deps).
-# The camera SDK loads them into the app through the same-process-HAL namespace. OxygenOS and
+# The camera SDK loads them into the app through the same-process-HAL namespace. ColorOS and
 # Infinity X label ~550 of them same_process_hal_file; LineageOS leaves them vendor_file, which
 # apps may not open, so the load fails and the preview pipeline crashes. Read/map/execute only.
 # These are the ROM's own files on read-only partitions, so they can't be given a narrower label.

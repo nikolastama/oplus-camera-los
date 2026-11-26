@@ -1,10 +1,10 @@
-diff --git a/smali/xb/b.smali b/smali/xb/b.smali
-index 64c0f4c..275d9e8 100644
---- a/smali/xb/b.smali
-+++ b/smali/xb/b.smali
-@@ -397,6 +397,14 @@
-     .line 111
-     sput-object v0, Lxb/b;->w:[I
+diff --git a/smali/ef/b.smali b/smali/ef/b.smali
+index d1760cc0..0db95b9e 100644
+--- a/smali/ef/b.smali
++++ b/smali/ef/b.smali
+@@ -660,6 +660,14 @@
+     .line 112
+     sput-object v0, Lef/b;->L:[I
  
 +    if-nez v0, :cond_los_blur_seginit_ok
 +
@@ -14,16 +14,16 @@ index 64c0f4c..275d9e8 100644
 +
 +    :cond_los_blur_seginit_ok
 +
-     .line 112
      .line 113
-     new-instance v0, Ll6/g7;
-diff --git a/smali/zb/l.smali b/smali/zb/l.smali
-index fd1c493..81366df 100644
---- a/smali/zb/l.smali
-+++ b/smali/zb/l.smali
-@@ -780,6 +780,12 @@
+     .line 114
+     new-instance v0, Lx2/i;
+diff --git a/smali/gf/j.smali b/smali/gf/j.smali
+index 72f8e152..5eee2f32 100644
+--- a/smali/gf/j.smali
++++ b/smali/gf/j.smali
+@@ -771,6 +771,12 @@
      .line 77
-     sput-object p0, Lxb/b;->w:[I
+     sput-object p0, Lef/b;->L:[I
  
 +    if-nez p0, :cond_los_blur_size_ok
 +

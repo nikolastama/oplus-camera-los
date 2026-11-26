@@ -1,0 +1,21 @@
+diff --git a/smali/android/view/SurfaceExtImpl.smali b/smali/android/view/SurfaceExtImpl.smali
+index f1b4958..c3dc12d 100644
+--- a/smali/android/view/SurfaceExtImpl.smali
++++ b/smali/android/view/SurfaceExtImpl.smali
+@@ -53,7 +53,15 @@
+ 
+ 
+ # virtual methods
+-.method public native nativeSetMaxDequeuedBufferCount(JI)V
++.method private native nativeSetMaxDequeuedBufferCount(JI)I
++.end method
++
++.method public nativeSetMaxDequeuedBufferCount(JI)V
++    .registers 4
++
++    invoke-direct {p0, p1, p2, p3}, Landroid/view/SurfaceExtImpl;->nativeSetMaxDequeuedBufferCount(JI)I
++
++    return-void
+ .end method
+ 
+ .method public setMaxDequeuedBufferCount(I)V

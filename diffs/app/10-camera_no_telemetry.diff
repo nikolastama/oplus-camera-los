@@ -1,0 +1,316 @@
+diff --git a/smali_classes10/com/oplus/statistics/OplusTrack.smali b/smali_classes10/com/oplus/statistics/OplusTrack.smali
+index b27110e4..d5085a41 100644
+--- a/smali_classes10/com/oplus/statistics/OplusTrack.smali
++++ b/smali_classes10/com/oplus/statistics/OplusTrack.smali
+@@ -1612,127 +1612,11 @@
+ .end method
+ 
+ .method public static onCommon(Lcom/oplus/statistics/data/CommonBean;I)Z
+-    .locals 5
+-
+-    const-string v0, "OplusTrack"
+-
+-    .line 24
+-    new-instance v1, Ljava/lang/StringBuilder;
+-
+-    invoke-direct {v1}, Ljava/lang/StringBuilder;-><init>()V
+-
+-    invoke-virtual {p0}, Lcom/oplus/statistics/data/TrackEvent;->getAppId()Ljava/lang/String;
+-
+-    move-result-object v2
+-
+-    invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-
+-    const-string v2, "_"
+-
+-    invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-
+-    .line 25
+-    invoke-virtual {p0}, Lcom/oplus/statistics/data/CommonBean;->getLogTag()Ljava/lang/String;
+-
+-    move-result-object v3
+-
+-    invoke-virtual {v1, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-
+-    invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-
+-    .line 26
+-    invoke-virtual {p0}, Lcom/oplus/statistics/data/CommonBean;->getEventID()Ljava/lang/String;
+-
+-    move-result-object v2
+-
+-    invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-
+-    invoke-virtual {v1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    sget-object v2, Lcom/oplus/statistics/OplusTrack;->sFireWall:Lcom/oplus/statistics/strategy/RequestFireWall;
+-
+-    .line 27
+-    invoke-virtual {v2, v1}, Lcom/oplus/statistics/strategy/RequestFireWall;->handleRequest(Ljava/lang/String;)Z
+-
+-    move-result v1
+-
+-    const/4 v2, 0x0
+-
+-    if-nez v1, :cond_0
+-
+-    .line 28
+-    invoke-static {}, Lcom/oplus/statistics/strategy/ChattyEventTracker;->getInstance()Lcom/oplus/statistics/strategy/ChattyEventTracker;
+-
+-    move-result-object p1
+-
+-    invoke-virtual {p1, p0}, Lcom/oplus/statistics/strategy/ChattyEventTracker;->onChattyEvent(Lcom/oplus/statistics/data/CommonBean;)V
+-
+-    return v2
+-
+-    .line 29
+-    :cond_0
+-    :try_start_0
+-    new-instance v1, Ly5/j;
+-
+-    invoke-direct {v1, p0, p1}, Ly5/j;-><init>(Ljava/lang/Object;I)V
+-
+-    invoke-static {v0, v1}, Lcom/oplus/statistics/util/LogUtil;->v(Ljava/lang/String;Lcom/oplus/statistics/util/Supplier;)V
+-
+-    and-int/lit8 v1, p1, 0x1
+-
+-    const/4 v3, 0x1
+-
+-    if-ne v1, v3, :cond_1
+-
+-    .line 30
+-    new-instance v1, Lzl/d0;
+-
+-    const/16 v4, 0x11
+-
+-    invoke-direct {v1, p0, v4}, Lzl/d0;-><init>(Ljava/lang/Object;I)V
+-
+-    invoke-static {v1}, Lcom/oplus/statistics/strategy/WorkThread;->execute(Ljava/lang/Runnable;)V
+-
+-    goto :goto_0
+-
+-    :catch_0
+-    move-exception p0
+-
+-    goto :goto_1
+-
+-    :cond_1
+-    :goto_0
+-    const/4 v1, 0x2
+-
+-    and-int/2addr p1, v1
+-
+-    if-ne p1, v1, :cond_2
+-
+-    .line 31
+-    new-instance p1, Lal/b0;
+-
+-    const/16 v1, 0x16
+-
+-    invoke-direct {p1, p0, v1}, Lal/b0;-><init>(Ljava/lang/Object;I)V
+-
+-    invoke-static {p1}, Lcom/oplus/statistics/strategy/WorkThread;->execute(Ljava/lang/Runnable;)V
+-    :try_end_0
+-    .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
+-
+-    :cond_2
+-    return v3
+-
+-    .line 32
+-    :goto_1
+-    new-instance p1, Lcom/oplus/statistics/c;
+-
+-    invoke-direct {p1, v2, p0}, Lcom/oplus/statistics/c;-><init>(ILjava/lang/Exception;)V
++    .locals 1
+ 
+-    invoke-static {v0, p1}, Lcom/oplus/statistics/util/LogUtil;->e(Ljava/lang/String;Lcom/oplus/statistics/util/Supplier;)V
++    const/4 v0, 0x0
+ 
+-    return v2
++    return v0
+ .end method
+ 
+ .method public static onCommonBatch(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;I)Z
+diff --git a/smali_classes23/com/oplus/camera/statistics/events/BaseEvent.smali b/smali_classes23/com/oplus/camera/statistics/events/BaseEvent.smali
+index c5002d4e..deb66281 100644
+--- a/smali_classes23/com/oplus/camera/statistics/events/BaseEvent.smali
++++ b/smali_classes23/com/oplus/camera/statistics/events/BaseEvent.smali
+@@ -522,7 +522,7 @@
+ 
+ # virtual methods
+ .method public report(Ljava/util/Map;)Z
+-    .locals 4
++    .locals 1
+     .annotation system Ldalvik/annotation/Signature;
+         value = {
+             "(",
+@@ -533,135 +533,7 @@
+         }
+     .end annotation
+ 
+-    .line 1
+-    const/4 v0, 0x1
+-
+-    .line 2
+-    invoke-static {v0}, Ljava/lang/String;->valueOf(I)Ljava/lang/String;
+-
+-    .line 3
+-    .line 4
+-    .line 5
+-    move-result-object v1
+-
+-    .line 6
+-    const-string v2, "capture_job_type"
++    const/4 v0, 0x0
+ 
+-    .line 7
+-    .line 8
+-    invoke-interface {p1, v2}, Ljava/util/Map;->get(Ljava/lang/Object;)Ljava/lang/Object;
+-
+-    .line 9
+-    .line 10
+-    .line 11
+-    move-result-object v2
+-
+-    .line 12
+-    invoke-virtual {v1, v2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+-
+-    .line 13
+-    .line 14
+-    .line 15
+-    move-result v1
+-
+-    .line 16
+-    if-nez v1, :cond_0
+-
+-    .line 17
+-    .line 18
+-    invoke-static {p1}, Lcom/oplus/camera/statistics/CommonParamsUtil;->buildBaseFoldParam(Ljava/util/Map;)V
+-
+-    .line 19
+-    .line 20
+-    .line 21
+-    invoke-static {p1}, Lcom/oplus/camera/statistics/CommonParamsUtil;->buildBaseParam(Ljava/util/Map;)V
+-
+-    .line 22
+-    .line 23
+-    .line 24
+-    :cond_0
+-    invoke-static {}, Lcom/oplus/camera/statistics/ReportThread;->getDataReportHandler()Landroid/os/Handler;
+-
+-    .line 25
+-    .line 26
+-    .line 27
+-    move-result-object v1
+-
+-    .line 28
+-    if-nez v1, :cond_1
+-
+-    .line 29
+-    .line 30
+-    iget-object v1, p0, Lcom/oplus/camera/statistics/events/BaseEvent;->mEventId:Ljava/lang/String;
+-
+-    .line 31
+-    .line 32
+-    new-instance v2, Lzl/j0;
+-
+-    .line 33
+-    .line 34
+-    invoke-direct {v2, v0, p0, p1}, Lzl/j0;-><init>(ILjava/lang/Object;Ljava/lang/Object;)V
+-
+-    .line 35
+-    .line 36
+-    .line 37
+-    invoke-static {v1, v2}, Lcom/oplus/camera/statistics/ReportThread;->postEvent(Ljava/lang/String;Ljava/lang/Runnable;)V
+-
+-    .line 38
+-    .line 39
+-    .line 40
+-    return v0
+-
+-    .line 41
+-    :cond_1
+-    invoke-static {}, Landroid/os/Looper;->myLooper()Landroid/os/Looper;
+-
+-    .line 42
+-    .line 43
+-    .line 44
+-    move-result-object v2
+-
+-    .line 45
+-    invoke-virtual {v1}, Landroid/os/Handler;->getLooper()Landroid/os/Looper;
+-
+-    .line 46
+-    .line 47
+-    .line 48
+-    move-result-object v3
+-
+-    .line 49
+-    if-ne v2, v3, :cond_2
+-
+-    .line 50
+-    .line 51
+-    invoke-direct {p0, p1}, Lcom/oplus/camera/statistics/events/BaseEvent;->reportData(Ljava/util/Map;)Z
+-
+-    .line 52
+-    .line 53
+-    .line 54
+-    move-result p0
+-
+-    .line 55
+-    return p0
+-
+-    .line 56
+-    :cond_2
+-    new-instance v2, Lcom/oplus/camera/statistics/events/a;
+-
+-    .line 57
+-    .line 58
+-    const/4 v3, 0x0
+-
+-    .line 59
+-    invoke-direct {v2, v3, p0, p1}, Lcom/oplus/camera/statistics/events/a;-><init>(ILjava/lang/Object;Ljava/lang/Object;)V
+-
+-    .line 60
+-    .line 61
+-    .line 62
+-    invoke-virtual {v1, v2}, Landroid/os/Handler;->post(Ljava/lang/Runnable;)Z
+-
+-    .line 63
+-    .line 64
+-    .line 65
+     return v0
+ .end method
+diff --git a/smali_classes29/com/oplus/camera/statistics/events/DcsReporter.smali b/smali_classes29/com/oplus/camera/statistics/events/DcsReporter.smali
+index 4c0780a2..0cd4ba1d 100644
+--- a/smali_classes29/com/oplus/camera/statistics/events/DcsReporter.smali
++++ b/smali_classes29/com/oplus/camera/statistics/events/DcsReporter.smali
+@@ -268,7 +268,7 @@
+     move-result p1
+ 
+     .line 21
+-    if-nez p1, :cond_0
++    goto :cond_0
+ 
+     .line 22
+     .line 23
+@@ -372,7 +372,7 @@
+     move-result v0
+ 
+     .line 5
+-    if-nez v0, :cond_0
++    goto :cond_0
+ 
+     .line 6
+     .line 7
+@@ -417,7 +417,7 @@
+     move-result v0
+ 
+     .line 5
+-    if-nez v0, :cond_1
++    goto :cond_1
+ 
+     .line 6
+     .line 7

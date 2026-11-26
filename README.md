@@ -10,7 +10,7 @@
 
 </div>
 
-A systemless KernelSU module that brings the OxygenOS camera app, with OnePlus's full image processing, to LineageOS. Remove the module and everything it added is gone.
+A systemless KernelSU module that brings the OnePlus camera app (from ColorOS 11.C.80, the firmware LineageOS takes its camera blobs from), with OnePlus's full image processing, to LineageOS. Remove the module and everything it added is gone.
 
 - OnePlus HDR and multi-frame processing
 - All rear lenses, portrait, video and front camera
@@ -18,7 +18,7 @@ A systemless KernelSU module that brings the OxygenOS camera app, with OnePlus's
 
 ## Requirements
 
-OnePlus 15 (`infiniti`) · official LineageOS 24 · KernelSU or KernelSU-Next · [meta-overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1) metamodule
+OnePlus 15 (`infiniti`) · official LineageOS 24 with ColorOS 11.C.80 blobs · KernelSU or KernelSU-Next · [meta-overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs/releases/tag/v1.3.1) metamodule
 
 ## Install
 
@@ -36,7 +36,7 @@ Problems? Press the module's **Action** button to save a debug bundle, then see 
 
 ## License
 
-Scripts, tools and docs: [Apache 2.0](LICENSE). The OnePlus camera app and libraries in the release zip belong to OnePlus/OPPO (from OxygenOS `CPH2745_16.0.10.601`) and are not part of this repository.
+Scripts, tools and docs: [Apache 2.0](LICENSE). The OnePlus camera app and libraries in the release zip belong to OnePlus/OPPO (from ColorOS `CPH2745_17.0.1.201(EX01)`, 11.C.80) and are not part of this repository.
 
 Based on the OP15InfinityX camera port. Thanks to LineageOS and the KernelSU developers.
 

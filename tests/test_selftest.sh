@@ -7,8 +7,9 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/mod" "$T/sdcard/DCIM/Camera" "$T/sdcard/Download" "$T/tmp" "$T/tomb" "$T/state"
 cp "$REPO/module/selftest.sh" "$REPO/module/module.prop" "$T/mod/"
-sed -i "s|/sdcard|$T/sdcard|g; s|/data/local/tmp|$T/tmp|g; s|/data/tombstones|$T/tomb|g; s|/proc/uptime|$T/uptime|g" "$T/mod/selftest.sh"
+sed -i "s|/sdcard|$T/sdcard|g; s|/data/local/tmp|$T/tmp|g; s|/data/tombstones|$T/tomb|g; s|/proc/uptime|$T/uptime|g; s|/proc/mounts|$T/mounts|g" "$T/mod/selftest.sh"
 echo "3600.00 7200.00" > "$T/uptime"   # past the self-test's start-up wait, whatever the host's uptime
+printf 'oplus_camera_blobs /odm/lib64 overlay ro 0 0\noplus_camera_blobs /odm/etc/camera overlay ro 0 0\n' > "$T/mounts"
 S=$T/state; C=$T/sdcard/DCIM/Camera
 cat > "$T/bin/am" <<EOF
 #!/bin/sh
@@ -46,7 +47,7 @@ run() { (cd "$T" && env PATH="$T/bin:$PATH" "$@" sh "$T/mod/selftest.sh" 2>&1); 
 fail=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 OUT=$(run X=1)
-check "healthy run: all pass"        'echo "$OUT" | grep -q "Result: 12 passed, 0 failed"'
+check "healthy run: all pass"        'echo "$OUT" | grep -q "Result: 15 passed, 0 failed"'
 check "test media deleted"           '[ -z "$(ls "$C")" ]'
 check "report saved"                 '[ -n "$(ls "$T/sdcard/Download")" ]'
 OUT=$(run LOSTFRAME=1 HALRESTART=1 NOVIDEO=1)

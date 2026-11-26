@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Check which patches still fit a (newer) OxygenOS firmware dump, without building anything.
+"""Check which patches still fit a (newer) ColorOS firmware dump, without building anything.
 
     python3 tools/check_firmware.py --dump <firmware dump root> [--apktool apktool.jar]
 
 For every part of the port it reports OK (fits as recorded), MOVED (fits, found by its bytes at a
 new place), FAIL (needs re-deriving, see docs/MAINTAINING.md) or NOTE (not checked, with why):
   files      firmware files the module copies (tools/selection.json, EXTRA_COPIES)
-  native     the OnePlus camera layer's byte edits (tools/binpatches.json)
+  appblobs   the camera app's own files LineageOS no longer ships (tools/app_blobs.txt), and
+             their fixups (tools/app_blobs.py)
   aps        the APS client edit (exact-build patch)
   install    install-time fixes of ROM files (fixlib calls in module/customize.sh), for the files the
              dump contains
@@ -28,6 +29,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import app_blobs as A  # noqa: E402
 import build_module as B  # noqa: E402
 import patches as P  # noqa: E402
 
@@ -71,24 +73,6 @@ def check_files(dump, r):
         r.add('OK', 'files', f'all {len(entries)} firmware files present')
 
 
-def check_native(dump, r):
-    for spec in json.loads((HERE / 'binpatches.json').read_text()):
-        p = find_in_dump(dump, spec['src'])
-        if not p:
-            r.add('FAIL', 'native', spec['src'], 'not in the dump')
-            continue
-        d = p.read_bytes()
-        same = hashlib.sha256(d).hexdigest() == spec['src_sha256']
-        for e in spec['edits']:
-            off = B.locate_edit(d, e)
-            if off is None:
-                r.add('FAIL', 'native', e['id'], f'{e["why"]}')
-            elif off == e['offset']:
-                r.add('OK', 'native', e['id'], 'same file' if same else 'at the recorded offset')
-            else:
-                r.add('MOVED', 'native', e['id'], f'found at {off:#x} (recorded {e["offset"]:#x})')
-
-
 def check_aps(dump, r):
     s = next(
         (
@@ -112,19 +96,39 @@ def check_aps(dump, r):
         )
 
 
-FIXLIB = re.compile(r'^fixlib\s+(.*?)\s+"([^"]+)"\s*(?:&&.*)?$', re.M)
+FIXLIB = re.compile(r'\bfixlib\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"([^"]+)"')
+
+
+def fixlib_calls():
+    """(ROM path, [[variant (orig, new), ...] per edit], label) for every fixlib call in customize.sh,
+    with the hex lists customize.sh takes from module/common.sh variables."""
+    text = (B.REPO / 'module/customize.sh').read_text().replace('\\\n', ' ')
+    common = (B.REPO / 'module/common.sh').read_text()
+    variables = dict(re.findall(r'^(\w+)=(/\S+)$', text, re.M))
+    variables.update(re.findall(r'^(\w+)="([0-9a-f+|]+)"$', common, re.M))
+
+    def value(v):
+        v = v.strip("'\"")
+        m = re.fullmatch(r'\$\{?(\w+)\}?', v)
+        return variables.get(m.group(1), v) if m else v
+
+    calls = []
+    for m in FIXLIB.finditer(text):
+        src, _dst, _off, orig, new, label = m.groups()
+        orig, new = value(orig), value(new)
+        if not re.fullmatch(r'[0-9a-f+|]+', orig) or not re.fullmatch(r'[0-9a-f+|]+', new):
+            calls.append((value(src), None, label))
+            continue
+        edits = [list(zip(o.split('|'), n.split('|'))) for o, n in zip(orig.split('+'), new.split('+'))]
+        calls.append((value(src), edits, label))
+    return calls
 
 
 def check_install(dump, r):
-    text = (B.REPO / 'module/customize.sh').read_text().replace('\\\n', ' ')
-    variables = dict(re.findall(r'^(\w+)=(/\S+)$', text, re.M))
-    for m in FIXLIB.finditer(text):
-        args, label = m.group(1).split(), m.group(2)
-        if len(args) != 5:
+    for src, edits, label in fixlib_calls():
+        if edits is None:
             r.add('NOTE', 'install', label, 'fixlib call not understood')
             continue
-        src, _dst, _off, orig, new = args
-        src = re.sub(r'"?\$(\w+)"?', lambda v: variables.get(v.group(1), v.group(0)), src).strip('"')
         p = find_in_dump(dump, src.lstrip('/')) if src.startswith('/') else None
         if not p:
             r.add(
@@ -132,11 +136,41 @@ def check_install(dump, r):
             )
             continue
         d = p.read_bytes()
-        n = d.count(bytes.fromhex(orig)) + d.count(bytes.fromhex(new))
-        if n == 1:
-            r.add('OK', 'install', label, 'pattern found once')
+        counts = [sum(d.count(bytes.fromhex(o)) + d.count(bytes.fromhex(n)) for o, n in e) for e in edits]
+        if all(c == 1 for c in counts):
+            r.add('OK', 'install', label, f'{len(edits)} edit(s), each found once')
         else:
-            r.add('FAIL', 'install', label, f'pattern found {n} times (needs exactly 1)')
+            r.add('FAIL', 'install', label, f'edits found {counts} times (each needs exactly 1)')
+
+
+def check_app_blobs(dump, r):
+    missing = [rel for rel in A.paths() if not find_in_dump(dump, rel)]
+    for rel in missing[:20]:
+        r.add('FAIL', 'appblobs', rel, 'not in the dump (renamed or removed? update tools/app_blobs.txt)')
+    if len(missing) > 20:
+        r.add('FAIL', 'appblobs', f'{len(missing) - 20} more missing')
+    if not missing:
+        r.add('OK', 'appblobs', f'all {len(A.paths())} camera app files present')
+    ctx = find_in_dump(dump, A.CONTEXTS)
+    try:
+        A.check_mounts(A.paths())
+        if not ctx:
+            raise ValueError(f'{A.CONTEXTS} not in the dump (extract the odm image with its labels)')
+        n = len(A.labels(A.read_contexts(ctx.read_text(encoding='utf-8')), A.paths()))
+        r.add('OK', 'appblobs', f'labels for {n} files and folders')
+    except ValueError as e:
+        r.add('FAIL', 'appblobs', str(e))
+    with tempfile.TemporaryDirectory() as td:
+        for rel in A.fixups():
+            p = find_in_dump(dump, rel)
+            if not p:
+                continue
+            t = Path(td) / Path(rel).name
+            shutil.copy2(p, t)
+            try:
+                r.add('OK', 'appblobs', rel, ', '.join(A.fix(rel, t)))
+            except ValueError as e:
+                r.add('FAIL', 'appblobs', rel, str(e))
 
 
 def dyn_symbols(path):
@@ -201,7 +235,7 @@ def check_smali(dump, apktool, r):
                 continue
             w = Path(td) / name
             subprocess.run(
-                ['java', '-jar', apktool, 'd', '-f', '-o', str(w), str(p)], check=True, capture_output=True
+                [*B.JAVA, '-jar', apktool, 'd', '-f', '-o', str(w), str(p)], check=True, capture_output=True
             )
             for f in fns:
                 try:
@@ -218,7 +252,7 @@ def main():
     dump = args.dump.resolve()
     r = Report()
     check_files(dump, r)
-    check_native(dump, r)
+    check_app_blobs(dump, r)
     check_aps(dump, r)
     check_install(dump, r)
     check_wrapper(dump, r)

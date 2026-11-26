@@ -28,7 +28,7 @@ def record(args, src, name, fns, out):
     with tempfile.TemporaryDirectory() as td:
         t = Path(td) / name
         subprocess.run(
-            ['java', '-jar', args.apktool, 'd', '-f', '-o', t, src], check=True, stdout=subprocess.DEVNULL
+            [*B.JAVA, '-jar', args.apktool, 'd', '-f', '-o', t, src], check=True, stdout=subprocess.DEVNULL
         )
         subprocess.run(['git', 'init', '-q'], cwd=t, check=True)
         subprocess.run(['git', 'add', '-A'], cwd=t, check=True)
@@ -47,13 +47,14 @@ def record(args, src, name, fns, out):
                     '# removed from the APK (shipped in priv-app/OplusCamera/lib/arm64 instead); '
                     'revert: --skip camera_drop_embedded_libs\n# sha256  size  file\n'
                     + '\n'.join(lines)
-                    + '\n'
+                    + '\n',
+                    newline='\n',
                 )
             else:
                 d = subprocess.run(
                     ['git', 'diff', '--cached'], cwd=t, check=True, capture_output=True, text=True
                 ).stdout
-                (out / f'{i:02d}-{f.__name__}.diff').write_text(d)
+                (out / f'{i:02d}-{f.__name__}.diff').write_text(d, newline='\n')
             subprocess.run(GIT + ['commit', '-qm', f.__name__, '--allow-empty'], cwd=t, check=True)
             print(f'{name}: {f.__name__}')
 
